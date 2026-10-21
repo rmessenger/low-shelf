@@ -88,7 +88,7 @@ final class AudioEngine {
         }
     }
 
-    func start(boost: Double, frequency: Double, steepness: Double, trim: Double, bypass: Bool) throws {
+    func start(boost: Double, frequency: Double, steepness: Double, trim: Double) throws {
         guard !running else { return }
         do {
             let device = try Self.defaultOutput()
@@ -141,7 +141,7 @@ final class AudioEngine {
                 throw AudioFailure(message: "Could not initialize the audio filter.")
             }
             dsp = processor
-            bass_configure(processor, boost, frequency, steepness, trim, bypass)
+            bass_configure(processor, boost, frequency, steepness, trim)
             try checkAudio(bass_attach(aggregate, processor, &ioProc), "Create audio callback")
             try checkAudio(bass_select_tap_input(aggregate, ioProc, UInt32(inputStreams.count)), "Select system audio input")
             try checkAudio(AudioDeviceStart(aggregate, ioProc), "Start audio")

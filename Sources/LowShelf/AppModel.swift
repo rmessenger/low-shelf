@@ -10,7 +10,6 @@ final class AppModel: ObservableObject {
     @Published var frequency: Double { didSet { update() } }
     @Published var steepness: Double { didSet { update() } }
     @Published var trim: Double { didSet { update() } }
-    @Published var bypass = false { didSet { update() } }
     @Published private(set) var running = false
     @Published private(set) var outputName = "System output"
     @Published private(set) var sampleRate: Double = 0
@@ -44,7 +43,7 @@ final class AppModel: ObservableObject {
                 MainActor.assumeIsolated {
                     guard let self, self.running else { return }
                     self.stop()
-                    self.warning = "Paused for sleep. Press Start when you return."
+                    self.warning = "Disabled for sleep. Enable bass boost when you return."
                 }
             }
     }
@@ -54,14 +53,14 @@ final class AppModel: ObservableObject {
         UserDefaults.standard.set(frequency, forKey: "frequency")
         UserDefaults.standard.set(steepness, forKey: "steepness")
         UserDefaults.standard.set(trim, forKey: "trim")
-        if let dsp = engine.dsp { bass_configure(dsp, boost, frequency, steepness, trim, bypass) }
+        if let dsp = engine.dsp { bass_configure(dsp, boost, frequency, steepness, trim) }
     }
 
     func start() {
         error = nil
         warning = nil
         do {
-            try engine.start(boost: boost, frequency: frequency, steepness: steepness, trim: trim, bypass: bypass)
+            try engine.start(boost: boost, frequency: frequency, steepness: steepness, trim: trim)
             running = true
             previousCallbacks = 0
             staleTicks = 0
@@ -108,7 +107,7 @@ final class AppModel: ObservableObject {
             previousCallbacks = callbacks
             if staleTicks > 50 {
                 stop()
-                error = "The audio route stopped responding. Check audio capture permission, then try Start again."
+                error = "The audio route stopped responding. Check audio capture permission, then try enabling bass boost again."
                 return
             }
         }
@@ -120,7 +119,7 @@ final class AppModel: ObservableObject {
             if running, let previous = engine.output,
                current.id != previous.id || abs(current.rate - previous.rate) > 1 {
                 stop()
-                warning = "Output changed. Press Start to use \(current.name)."
+                warning = "Output changed. Enable bass boost to use \(current.name)."
             }
             outputName = current.name
             sampleRate = current.rate

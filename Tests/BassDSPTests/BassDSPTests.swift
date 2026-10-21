@@ -70,7 +70,7 @@ final class BassDSPTests {
             defer { bass_destroy(dsp) }
             let input = tone(hz: hz)
             for steepness in [0.1, 0.5, 1.0, 0.1] {
-                bass_configure(dsp, 12, 200, steepness, 0, false)
+                bass_configure(dsp, 12, 200, steepness, 0)
                 let output = process(dsp, input)
                 let measured = 20 * log10(rms(Array(output.suffix(48000))) / rms(Array(input.suffix(48000))))
                 expectEqual(measured, bass_response(48000, 12, 200, steepness, hz) - 13, accuracy: 0.001)
@@ -102,15 +102,6 @@ final class BassDSPTests {
         for (source, destination) in zip(input, output) {
             expectEqual(destination, source * gain, accuracy: 1e-7)
         }
-    }
-
-    func testBypassBecomesBitExactAfterRamp() throws {
-        let dsp = try processor(boost: 12)
-        defer { bass_destroy(dsp) }
-        bass_configure(dsp, 12, 100, 1, -10, true)
-        let input = tone(hz: 731)
-        let output = process(dsp, input)
-        expectEqual(Array(input.suffix(48000)), Array(output.suffix(48000)))
     }
 
     func testNoStereoCrosstalk() throws {
@@ -147,7 +138,7 @@ final class BassDSPTests {
         defer { bass_destroy(dsp) }
         let input = Array(tone(hz: 100).prefix(512))
         for i in 0..<500 {
-            bass_configure(dsp, Double(i % 25), Double(20 + i % 481), 0.1 + Double(i % 91) / 100, -Double(i % 19), i % 3 == 0)
+            bass_configure(dsp, Double(i % 25), Double(20 + i % 481), 0.1 + Double(i % 91) / 100, -Double(i % 19))
             let output = process(dsp, input)
             expectTrue(output.allSatisfy { $0.isFinite && abs($0) < 1 })
         }

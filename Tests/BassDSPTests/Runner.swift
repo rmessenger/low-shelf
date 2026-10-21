@@ -47,7 +47,6 @@ struct Runner {
             ("Live steepness updates", suite.testSteepnessUpdatesChangeActualAudio),
             ("Measured audio gain", suite.testActualAudioHasExpectedBassAndTrebleGain),
             ("Zero boost transparency", suite.testZeroBoostIsOnlyDocumentedHeadroomAttenuation),
-            ("Bit-exact settled bypass", suite.testBypassBecomesBitExactAfterRamp),
             ("Stereo separation", suite.testNoStereoCrosstalk),
             ("Trim and headroom", suite.testTrimAndFullScaleBassHeadroom),
             ("Silence and meter", suite.testSilenceStaysSilentAndMeterResets),

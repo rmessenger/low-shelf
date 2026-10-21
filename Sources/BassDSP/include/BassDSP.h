@@ -9,7 +9,7 @@ BassDSP *bass_create(double sample_rate, double boost_db, double frequency, doub
 OSStatus bass_attach(AudioObjectID device, BassDSP *dsp, AudioDeviceIOProcID *io_proc);
 OSStatus bass_select_tap_input(AudioObjectID device, AudioDeviceIOProcID io_proc, uint32_t stream_count);
 void bass_destroy(BassDSP *dsp);
-void bass_configure(BassDSP *dsp, double boost_db, double frequency, double steepness, double trim_db, bool bypass);
+void bass_configure(BassDSP *dsp, double boost_db, double frequency, double steepness, double trim_db);
 void bass_process(BassDSP *dsp, const float *input, float *output, uint32_t frames);
 float bass_take_peak(BassDSP *dsp);
 uint32_t bass_take_faults(BassDSP *dsp);

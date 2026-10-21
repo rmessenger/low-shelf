@@ -18,14 +18,17 @@ struct LowShelfApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Audio") {
-                Button(model.running ? "Stop processing" : "Start processing") {
+                Button(model.running ? "Disable bass boost" : "Enable bass boost") {
                     model.running ? model.stop() : model.start()
                 }.keyboardShortcut("e", modifiers: .command)
-                Toggle("Bypass", isOn: $model.bypass).keyboardShortcut("b", modifiers: .command)
             }
         }
-        MenuBarExtra("LowShelf", systemImage: "waveform.path") {
+        MenuBarExtra {
             LowShelfMenu(model: model)
+        } label: {
+            Image(systemName: model.running ? "waveform.circle.fill" : "waveform.circle")
+                .accessibilityLabel(model.running ? "LowShelf — bass boost enabled" : "LowShelf — bass boost disabled")
+                .help(model.running ? "LowShelf — bass boost enabled" : "LowShelf — bass boost disabled")
         }
     }
 }
@@ -38,10 +41,9 @@ struct LowShelfMenu: View {
     var body: some View {
         Group {
             Text("LowShelf · \(model.outputName)")
-            Button(model.running ? "Stop processing" : "Start processing") {
+            Button(model.running ? "Disable bass boost" : "Enable bass boost") {
                 model.running ? model.stop() : model.start()
             }
-            Toggle("Bypass", isOn: $model.bypass)
             Divider()
             Button("Show LowShelf") {
                 openWindow(id: "main")
@@ -67,7 +69,7 @@ struct ContentView: View {
                 Spacer()
                 HStack(spacing: 6) {
                     Circle().fill(model.running ? accent : .gray).frame(width: 6, height: 6)
-                    Text(model.running ? (model.bypass ? "BYPASSED" : "ACTIVE") : "READY")
+                    Text(model.running ? "ENABLED" : "DISABLED")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
                 }.padding(9).background(.white.opacity(0.05), in: Capsule())
             }
@@ -77,10 +79,10 @@ struct ContentView: View {
                     Spacer()
                     Text("Relative to mids & highs").font(.system(size: 10))
                 }.foregroundStyle(.secondary)
-                ResponseCurve(boost: model.bypass ? 0 : model.boost, frequency: model.frequency,
+                ResponseCurve(boost: model.boost, frequency: model.frequency,
                               steepness: model.steepness, sampleRate: model.sampleRate, accent: accent)
                     .frame(height: 115)
-                    .accessibilityLabel("Bass response, \((model.bypass ? 0 : model.boost), specifier: "%.1f") decibels at \(model.frequency, specifier: "%.0f") hertz")
+                    .accessibilityLabel("Bass response, \(model.boost, specifier: "%.1f") decibels at \(model.frequency, specifier: "%.0f") hertz")
                 GeometryReader { geometry in
                     ForEach([20.0, 100, 1000, 20000], id: \.self) { hz in
                         Text(hz == 20 ? "20 Hz" : (hz >= 1000 ? "\(Int(hz / 1000))k" : "\(Int(hz))"))
@@ -108,7 +110,7 @@ struct ContentView: View {
                 HStack {
                     Label("Automatic headroom", systemImage: "checkmark.shield")
                     Spacer()
-                    Text(model.bypass ? "Bypassed" : String(format: "−%.1f dB", model.boost + 1))
+                    Text(String(format: "−%.1f dB", model.boost + 1))
                         .monospacedDigit().foregroundStyle(accent)
                 }.font(.system(size: 12))
                 control("Output trim", value: $model.trim, range: -18...0, unit: "dB", decimals: 1)
@@ -133,17 +135,16 @@ struct ContentView: View {
                     Text(String(format: "%.1f kHz", model.sampleRate / 1000)).monospacedDigit()
                 }.font(.system(size: 11)).foregroundStyle(.secondary)
                 HStack {
-                    Button(model.running ? "Stop" : "Start listening") {
+                    Button(model.running ? "Disable bass boost" : "Enable bass boost") {
                         model.running ? model.stop() : model.start()
                     }
                     .buttonStyle(.borderedProminent).tint(accent).foregroundStyle(.black)
                     .controlSize(.large)
                     Spacer()
-                    Toggle("Bypass", isOn: $model.bypass).toggleStyle(.switch).controlSize(.small)
                 }
                 Text(model.error ?? model.warning ?? (model.running
-                    ? "Headroom lowers the overall level. Bypass restores the original volume."
-                    : "All audio stays on your Mac. Start requests system audio access."))
+                    ? "Bass boost is enabled. Disabling restores normal playback and volume."
+                    : "Bass boost is disabled. Enable it to apply your settings."))
                     .font(.system(size: 11)).foregroundStyle(model.error != nil ? .orange : .secondary)
                     .lineLimit(3).frame(height: 42, alignment: .topLeading).textSelection(.enabled)
             }

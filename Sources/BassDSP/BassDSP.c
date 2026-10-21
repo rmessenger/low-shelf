@@ -9,7 +9,7 @@ _Static_assert(ATOMIC_INT_LOCK_FREE == 2, "Real-time meters require lock-free at
 typedef struct { double b0, b1, b2, a1, a2; } Coefficients;
 typedef struct { double x1, x2, y1, y2; } History;
 struct BassDSP {
-    double rate, boost, frequency, steepness, trim, wet;
+    double rate, boost, frequency, steepness, trim;
     Coefficients coefficients;
     History history[2];
     _Atomic uint64_t settings;
@@ -17,12 +17,12 @@ struct BassDSP {
     _Atomic uint64_t callbacks;
 };
 static double clamp(double x, double lo, double hi) { return fmax(lo, fmin(hi, x)); }
-static uint64_t pack(double boost, double frequency, double steepness, double trim, bool bypass) {
+static uint64_t pack(double boost, double frequency, double steepness, double trim) {
     uint64_t b = (uint64_t)llround(clamp(boost, 0, 24) * 100);
     uint64_t f = (uint64_t)llround(clamp(frequency, 20, 500) * 100);
     uint64_t t = (uint64_t)llround(clamp(-trim, 0, 18) * 100);
     uint64_t s = (uint64_t)llround(clamp(steepness, 0.1, 1) * 1000);
-    return b | (f << 16) | (t << 32) | ((uint64_t)bypass << 48) | (s << 49);
+    return b | (f << 16) | (t << 32) | (s << 48);
 }
 static Coefficients shelf(double rate, double boost, double frequency, double steepness) {
     double a = pow(10, boost / 40), w = 2 * M_PI * frequency / rate;
@@ -45,17 +45,16 @@ BassDSP *bass_create(double rate, double boost, double frequency, double steepne
     dsp->frequency = clamp(frequency, 20, 500);
     dsp->steepness = clamp(steepness, 0.1, 1);
     dsp->trim = clamp(trim, -18, 0);
-    dsp->wet = 1;
     dsp->coefficients = shelf(rate, dsp->boost, dsp->frequency, dsp->steepness);
-    atomic_init(&dsp->settings, pack(boost, frequency, steepness, trim, false));
+    atomic_init(&dsp->settings, pack(boost, frequency, steepness, trim));
     atomic_init(&dsp->peak_bits, 0);
     atomic_init(&dsp->faults, 0);
     atomic_init(&dsp->callbacks, 0);
     return dsp;
 }
 void bass_destroy(BassDSP *dsp) { free(dsp); }
-void bass_configure(BassDSP *dsp, double boost, double frequency, double steepness, double trim, bool bypass) {
-    atomic_store_explicit(&dsp->settings, pack(boost, frequency, steepness, trim, bypass), memory_order_relaxed);
+void bass_configure(BassDSP *dsp, double boost, double frequency, double steepness, double trim) {
+    atomic_store_explicit(&dsp->settings, pack(boost, frequency, steepness, trim), memory_order_relaxed);
 }
 static double approach(double value, double target, double step) {
     return value + clamp(target - value, -step, step);
@@ -64,8 +63,7 @@ static void frame(BassDSP *dsp, double left, double right, double *out_left, dou
     double boost = (settings & 0xffff) / 100.0;
     double frequency = ((settings >> 16) & 0xffff) / 100.0;
     double trim = -((double)((settings >> 32) & 0xffff)) / 100.0;
-    bool bypass = ((settings >> 48) & 1) != 0;
-    double steepness = ((settings >> 49) & 0x3ff) / 1000.0;
+    double steepness = ((settings >> 48) & 0x3ff) / 1000.0;
     double step = 1 / (0.05 * dsp->rate);
     if (dsp->boost != boost || dsp->frequency != frequency || dsp->steepness != steepness) {
         dsp->boost = approach(dsp->boost, boost, 24 * step);
@@ -74,7 +72,6 @@ static void frame(BassDSP *dsp, double left, double right, double *out_left, dou
         dsp->coefficients = shelf(dsp->rate, dsp->boost, dsp->frequency, dsp->steepness);
     }
     dsp->trim = approach(dsp->trim, trim, 18 * step);
-    dsp->wet = approach(dsp->wet, bypass ? 0 : 1, step);
     // Reserve the full shelf gain plus 1 dB; no compressor or limiter changes dynamics.
     double gain = pow(10, (-dsp->boost - 1 + dsp->trim) / 20);
     double inputs[2] = {left, right}, results[2];
@@ -90,7 +87,7 @@ static void frame(BassDSP *dsp, double left, double right, double *out_left, dou
         } else {
             h->x2 = h->x1; h->x1 = x; h->y2 = h->y1; h->y1 = fabs(y) < 1e-30 ? 0 : y;
         }
-        results[ch] = dsp->wet == 0 ? x : x * (1 - dsp->wet) + y * gain * dsp->wet;
+        results[ch] = y * gain;
     }
     *out_left = results[0]; *out_right = results[1];
 }
