@@ -10,7 +10,7 @@ struct LowShelfApp: App {
     var body: some Scene {
         Window("LowShelf", id: "main") {
             ContentView(model: model)
-                .frame(width: 510, height: 660)
+                .frame(width: 510, height: 730)
                 .preferredColorScheme(.dark)
         }
         .windowResizability(.contentSize)
@@ -78,7 +78,7 @@ struct ContentView: View {
                     Text("Relative to mids & highs").font(.system(size: 10))
                 }.foregroundStyle(.secondary)
                 ResponseCurve(boost: model.bypass ? 0 : model.boost, frequency: model.frequency,
-                              sampleRate: model.sampleRate, accent: accent)
+                              steepness: model.steepness, sampleRate: model.sampleRate, accent: accent)
                     .frame(height: 115)
                     .accessibilityLabel("Bass response, \((model.bypass ? 0 : model.boost), specifier: "%.1f") decibels at \(model.frequency, specifier: "%.0f") hertz")
                 GeometryReader { geometry in
@@ -92,6 +92,11 @@ struct ContentView: View {
             VStack(spacing: 17) {
                 control("Bass boost", value: $model.boost, range: 0...24, unit: "dB", decimals: 1)
                 control("Shelf midpoint", value: $model.frequency, range: 20...500, unit: "Hz", decimals: 0)
+                control("Shelf steepness", value: Binding(
+                    get: { model.steepness * 100 },
+                    set: { model.steepness = $0 / 100 }
+                ), range: 10...100, unit: "%", decimals: 0)
+                .help("Lower values spread the transition across more frequencies. 100% is the steepest shelf without a resonant bump.")
                 HStack(spacing: 8) {
                     preset("Subtle", boost: 3, frequency: 80)
                     preset("Warm", boost: 5, frequency: 120)
@@ -173,6 +178,7 @@ struct ContentView: View {
 struct ResponseCurve: View {
     let boost: Double
     let frequency: Double
+    let steepness: Double
     let sampleRate: Double
     let accent: Color
 
@@ -189,7 +195,7 @@ struct ResponseCurve: View {
             for index in 0...300 {
                 let x = Double(index) / 300
                 let hz = 20 * pow(1000, x)
-                let db = bass_response(max(44100, sampleRate), boost, frequency, hz)
+                let db = bass_response(max(44100, sampleRate), boost, frequency, steepness, hz)
                 let point = CGPoint(x: x * size.width, y: baseline - db / 24 * (size.height - 18))
                 if index == 0 { curve.move(to: point) } else { curve.addLine(to: point) }
             }

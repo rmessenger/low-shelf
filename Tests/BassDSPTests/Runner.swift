@@ -43,6 +43,8 @@ struct Runner {
         let tests: [(String, () throws -> Void)] = [
             ("Shelf endpoints and midpoint", suite.testShelfEndpointsAndMidpointAcrossSampleRates),
             ("Monotonic response", suite.testShelfIsMonotonicWithoutResonantOvershoot),
+            ("Steepness transition width", suite.testSteepnessChangesTransitionWidth),
+            ("Live steepness updates", suite.testSteepnessUpdatesChangeActualAudio),
             ("Measured audio gain", suite.testActualAudioHasExpectedBassAndTrebleGain),
             ("Zero boost transparency", suite.testZeroBoostIsOnlyDocumentedHeadroomAttenuation),
             ("Bit-exact settled bypass", suite.testBypassBecomesBitExactAfterRamp),

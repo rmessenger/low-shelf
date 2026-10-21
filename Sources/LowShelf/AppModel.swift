@@ -8,6 +8,7 @@ import CoreAudio
 final class AppModel: ObservableObject {
     @Published var boost: Double { didSet { update() } }
     @Published var frequency: Double { didSet { update() } }
+    @Published var steepness: Double { didSet { update() } }
     @Published var trim: Double { didSet { update() } }
     @Published var bypass = false { didSet { update() } }
     @Published private(set) var running = false
@@ -25,9 +26,10 @@ final class AppModel: ObservableObject {
 
     init() {
         let defaults = UserDefaults.standard
-        defaults.register(defaults: ["boost": 4.0, "frequency": 100.0, "trim": 0.0])
+        defaults.register(defaults: ["boost": 4.0, "frequency": 100.0, "steepness": 1.0, "trim": 0.0])
         boost = min(24, max(0, defaults.double(forKey: "boost")))
         frequency = min(500, max(20, defaults.double(forKey: "frequency")))
+        steepness = min(1, max(0.1, defaults.double(forKey: "steepness")))
         trim = min(0, max(-18, defaults.double(forKey: "trim")))
         refreshOutput()
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -50,15 +52,16 @@ final class AppModel: ObservableObject {
     private func update() {
         UserDefaults.standard.set(boost, forKey: "boost")
         UserDefaults.standard.set(frequency, forKey: "frequency")
+        UserDefaults.standard.set(steepness, forKey: "steepness")
         UserDefaults.standard.set(trim, forKey: "trim")
-        if let dsp = engine.dsp { bass_configure(dsp, boost, frequency, trim, bypass) }
+        if let dsp = engine.dsp { bass_configure(dsp, boost, frequency, steepness, trim, bypass) }
     }
 
     func start() {
         error = nil
         warning = nil
         do {
-            try engine.start(boost: boost, frequency: frequency, trim: trim, bypass: bypass)
+            try engine.start(boost: boost, frequency: frequency, steepness: steepness, trim: trim, bypass: bypass)
             running = true
             previousCallbacks = 0
             staleTicks = 0
@@ -76,6 +79,7 @@ final class AppModel: ObservableObject {
     func preset(boost: Double, frequency: Double) {
         self.boost = boost
         self.frequency = frequency
+        steepness = 1
     }
 
     private func refreshOutput() {

@@ -3,8 +3,8 @@ import CoreAudio
 import Foundation
 
 final class BassDSPTests {
-    private func processor(rate: Double = 48000, boost: Double = 6, frequency: Double = 100, trim: Double = 0) throws -> OpaquePointer {
-        try unwrap(bass_create(rate, boost, frequency, trim))
+    private func processor(rate: Double = 48000, boost: Double = 6, frequency: Double = 100, steepness: Double = 1, trim: Double = 0) throws -> OpaquePointer {
+        try unwrap(bass_create(rate, boost, frequency, steepness, trim))
     }
 
     private func process(_ dsp: OpaquePointer, _ input: [Float]) -> [Float] {
@@ -31,23 +31,52 @@ final class BassDSPTests {
     func testShelfEndpointsAndMidpointAcrossSampleRates() {
         for rate in [44100.0, 48000, 96000, 192000] {
             for boost in [0.0, 3, 6, 12, 24] {
-                expectEqual(bass_response(rate, boost, 100, 0), boost, accuracy: 1e-6)
-                expectEqual(bass_response(rate, boost, 100, 100), boost / 2, accuracy: 1e-6)
-                expectEqual(bass_response(rate, boost, 100, rate / 2), 0, accuracy: 1e-6)
+                for steepness in [0.1, 0.5, 1.0] {
+                    expectEqual(bass_response(rate, boost, 100, steepness, 0), boost, accuracy: 1e-6)
+                    expectEqual(bass_response(rate, boost, 100, steepness, 100), boost / 2, accuracy: 1e-6)
+                    expectEqual(bass_response(rate, boost, 100, steepness, rate / 2), 0, accuracy: 1e-6)
+                }
             }
         }
     }
 
     func testShelfIsMonotonicWithoutResonantOvershoot() {
         for frequency in [20.0, 40, 100, 250, 500] {
-            var previous = 24.00001
-            for step in 0...500 {
-                let hz = 20 * pow(1000, Double(step) / 500)
-                let db = bass_response(48000, 24, frequency, hz)
-                expectLessOrEqual(db, previous + 1e-7)
-                expectGreaterOrEqual(db, -1e-7)
-                previous = db
+            for steepness in [0.1, 0.5, 1.0] {
+                var previous = 24.00001
+                for step in 0...500 {
+                    let hz = 20 * pow(1000, Double(step) / 500)
+                    let db = bass_response(48000, 24, frequency, steepness, hz)
+                    expectLessOrEqual(db, previous + 1e-7)
+                    expectGreaterOrEqual(db, -1e-7)
+                    previous = db
+                }
             }
+        }
+    }
+
+    func testSteepnessChangesTransitionWidth() {
+        let gentleBelow = bass_response(48000, 12, 200, 0.1, 100)
+        let steepBelow = bass_response(48000, 12, 200, 1, 100)
+        let gentleAbove = bass_response(48000, 12, 200, 0.1, 400)
+        let steepAbove = bass_response(48000, 12, 200, 1, 400)
+        expectGreater(steepBelow - gentleBelow, 2)
+        expectGreater(gentleAbove - steepAbove, 2)
+    }
+
+    func testSteepnessUpdatesChangeActualAudio() throws {
+        for hz in [100.0, 200, 400] {
+            let dsp = try processor(boost: 12, frequency: 200, steepness: 0.1)
+            defer { bass_destroy(dsp) }
+            let input = tone(hz: hz)
+            for steepness in [0.1, 0.5, 1.0, 0.1] {
+                bass_configure(dsp, 12, 200, steepness, 0, false)
+                let output = process(dsp, input)
+                let measured = 20 * log10(rms(Array(output.suffix(48000))) / rms(Array(input.suffix(48000))))
+                expectEqual(measured, bass_response(48000, 12, 200, steepness, hz) - 13, accuracy: 0.001)
+                expectTrue(output.allSatisfy { $0.isFinite && abs($0) < 1 })
+            }
+            expectEqual(bass_take_faults(dsp), 0)
         }
     }
 
@@ -59,7 +88,7 @@ final class BassDSPTests {
                 let input = tone(hz: hz)
                 let output = process(dsp, input)
                 let measured = 20 * log10(rms(Array(output.suffix(48000))) / rms(Array(input.suffix(48000))))
-                expectEqual(measured, bass_response(48000, boost, midpoint, hz) - boost - 1, accuracy: 0.001)
+                expectEqual(measured, bass_response(48000, boost, midpoint, 1, hz) - boost - 1, accuracy: 0.001)
             }
         }
     }
@@ -78,7 +107,7 @@ final class BassDSPTests {
     func testBypassBecomesBitExactAfterRamp() throws {
         let dsp = try processor(boost: 12)
         defer { bass_destroy(dsp) }
-        bass_configure(dsp, 12, 100, -10, true)
+        bass_configure(dsp, 12, 100, 1, -10, true)
         let input = tone(hz: 731)
         let output = process(dsp, input)
         expectEqual(Array(input.suffix(48000)), Array(output.suffix(48000)))
@@ -101,7 +130,7 @@ final class BassDSPTests {
         let output = process(dsp, input)
         expectLess(output.map(abs).max()!, 0.66)
         let measured = 20 * log10(rms(Array(output.suffix(48000))) / rms(Array(input.suffix(48000))))
-        expectEqual(measured, bass_response(48000, 12, 100, 20) - 16, accuracy: 0.001)
+        expectEqual(measured, bass_response(48000, 12, 100, 1, 20) - 16, accuracy: 0.001)
     }
 
     func testSilenceStaysSilentAndMeterResets() throws {
@@ -118,7 +147,7 @@ final class BassDSPTests {
         defer { bass_destroy(dsp) }
         let input = Array(tone(hz: 100).prefix(512))
         for i in 0..<500 {
-            bass_configure(dsp, Double(i % 25), Double(20 + i % 481), -Double(i % 19), i % 3 == 0)
+            bass_configure(dsp, Double(i % 25), Double(20 + i % 481), 0.1 + Double(i % 91) / 100, -Double(i % 19), i % 3 == 0)
             let output = process(dsp, input)
             expectTrue(output.allSatisfy { $0.isFinite && abs($0) < 1 })
         }
@@ -126,8 +155,8 @@ final class BassDSPTests {
     }
 
     func testInvalidSampleRatesAreRejected() {
-        expectNil(bass_create(0, 6, 100, 0))
-        expectNil(bass_create(.nan, 6, 100, 0))
+        expectNil(bass_create(0, 6, 100, 1, 0))
+        expectNil(bass_create(.nan, 6, 100, 1, 0))
     }
 
     func testRoutingWithHardwareInputAndPlanarStereoOutput() throws {

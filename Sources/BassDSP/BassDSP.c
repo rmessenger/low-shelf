@@ -9,7 +9,7 @@ _Static_assert(ATOMIC_INT_LOCK_FREE == 2, "Real-time meters require lock-free at
 typedef struct { double b0, b1, b2, a1, a2; } Coefficients;
 typedef struct { double x1, x2, y1, y2; } History;
 struct BassDSP {
-    double rate, boost, frequency, trim, wet;
+    double rate, boost, frequency, steepness, trim, wet;
     Coefficients coefficients;
     History history[2];
     _Atomic uint64_t settings;
@@ -17,15 +17,16 @@ struct BassDSP {
     _Atomic uint64_t callbacks;
 };
 static double clamp(double x, double lo, double hi) { return fmax(lo, fmin(hi, x)); }
-static uint64_t pack(double boost, double frequency, double trim, bool bypass) {
+static uint64_t pack(double boost, double frequency, double steepness, double trim, bool bypass) {
     uint64_t b = (uint64_t)llround(clamp(boost, 0, 24) * 100);
     uint64_t f = (uint64_t)llround(clamp(frequency, 20, 500) * 100);
     uint64_t t = (uint64_t)llround(clamp(-trim, 0, 18) * 100);
-    return b | (f << 16) | (t << 32) | ((uint64_t)bypass << 48);
+    uint64_t s = (uint64_t)llround(clamp(steepness, 0.1, 1) * 1000);
+    return b | (f << 16) | (t << 32) | ((uint64_t)bypass << 48) | (s << 49);
 }
-static Coefficients shelf(double rate, double boost, double frequency) {
+static Coefficients shelf(double rate, double boost, double frequency, double steepness) {
     double a = pow(10, boost / 40), w = 2 * M_PI * frequency / rate;
-    double c = cos(w), beta = sqrt(2 * a) * sin(w);
+    double c = cos(w), beta = sqrt((a * a + 1) * (1 / clamp(steepness, 0.1, 1) - 1) + 2 * a) * sin(w);
     double a0 = (a + 1) + (a - 1) * c + beta;
     return (Coefficients){
         a * ((a + 1) - (a - 1) * c + beta) / a0,
@@ -35,25 +36,26 @@ static Coefficients shelf(double rate, double boost, double frequency) {
         ((a + 1) + (a - 1) * c - beta) / a0
     };
 }
-BassDSP *bass_create(double rate, double boost, double frequency, double trim) {
+BassDSP *bass_create(double rate, double boost, double frequency, double steepness, double trim) {
     if (!isfinite(rate) || rate < 8000 || rate > 768000) return NULL;
     BassDSP *dsp = calloc(1, sizeof(*dsp));
     if (!dsp) return NULL;
     dsp->rate = rate;
     dsp->boost = clamp(boost, 0, 24);
     dsp->frequency = clamp(frequency, 20, 500);
+    dsp->steepness = clamp(steepness, 0.1, 1);
     dsp->trim = clamp(trim, -18, 0);
     dsp->wet = 1;
-    dsp->coefficients = shelf(rate, dsp->boost, dsp->frequency);
-    atomic_init(&dsp->settings, pack(boost, frequency, trim, false));
+    dsp->coefficients = shelf(rate, dsp->boost, dsp->frequency, dsp->steepness);
+    atomic_init(&dsp->settings, pack(boost, frequency, steepness, trim, false));
     atomic_init(&dsp->peak_bits, 0);
     atomic_init(&dsp->faults, 0);
     atomic_init(&dsp->callbacks, 0);
     return dsp;
 }
 void bass_destroy(BassDSP *dsp) { free(dsp); }
-void bass_configure(BassDSP *dsp, double boost, double frequency, double trim, bool bypass) {
-    atomic_store_explicit(&dsp->settings, pack(boost, frequency, trim, bypass), memory_order_relaxed);
+void bass_configure(BassDSP *dsp, double boost, double frequency, double steepness, double trim, bool bypass) {
+    atomic_store_explicit(&dsp->settings, pack(boost, frequency, steepness, trim, bypass), memory_order_relaxed);
 }
 static double approach(double value, double target, double step) {
     return value + clamp(target - value, -step, step);
@@ -62,12 +64,14 @@ static void frame(BassDSP *dsp, double left, double right, double *out_left, dou
     double boost = (settings & 0xffff) / 100.0;
     double frequency = ((settings >> 16) & 0xffff) / 100.0;
     double trim = -((double)((settings >> 32) & 0xffff)) / 100.0;
-    bool bypass = (settings >> 48) != 0;
+    bool bypass = ((settings >> 48) & 1) != 0;
+    double steepness = ((settings >> 49) & 0x3ff) / 1000.0;
     double step = 1 / (0.05 * dsp->rate);
-    if (dsp->boost != boost || dsp->frequency != frequency) {
+    if (dsp->boost != boost || dsp->frequency != frequency || dsp->steepness != steepness) {
         dsp->boost = approach(dsp->boost, boost, 24 * step);
         dsp->frequency = approach(dsp->frequency, frequency, 480 * step);
-        dsp->coefficients = shelf(dsp->rate, dsp->boost, dsp->frequency);
+        dsp->steepness = approach(dsp->steepness, steepness, 0.9 * step);
+        dsp->coefficients = shelf(dsp->rate, dsp->boost, dsp->frequency, dsp->steepness);
     }
     dsp->trim = approach(dsp->trim, trim, 18 * step);
     dsp->wet = approach(dsp->wet, bypass ? 0 : 1, step);
@@ -111,8 +115,8 @@ void bass_process(BassDSP *dsp, const float *input, float *output, uint32_t fram
     }
     meter(dsp, peak);
 }
-double bass_response(double rate, double boost, double frequency, double at_hz) {
-    Coefficients c = shelf(rate, boost, frequency);
+double bass_response(double rate, double boost, double frequency, double steepness, double at_hz) {
+    Coefficients c = shelf(rate, boost, frequency, steepness);
     double w = 2 * M_PI * at_hz / rate;
     double nr = c.b0 + c.b1 * cos(w) + c.b2 * cos(2*w);
     double ni = -c.b1 * sin(w) - c.b2 * sin(2*w);

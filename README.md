@@ -17,6 +17,7 @@ Press **Start listening**. If macOS asks, allow LowShelf to capture system audio
 
 - **Bass boost:** 0–24 dB relative to mids and highs.
 - **Shelf midpoint:** 20–500 Hz, the point at half the selected boost. Lower values emphasize deep bass; higher values add warmth.
+- **Shelf steepness:** 10–100%. Lower values make a broader, gentler transition. 100% matches the original curve and is the steepest setting without a resonant bump. Presets restore 100%.
 - **Automatic headroom:** reduces gain by the boost amount plus 1 dB. Boosting bass therefore makes mids and highs quieter. Raise your normal playback volume if desired.
 - **Output trim:** an additional 0–18 dB reduction for unusually hot material or transients.
 - **Bypass:** smoothly restores unprocessed audio at its original level, including bypassing headroom and trim. It may sound louder. Command-B toggles it.
@@ -26,7 +27,7 @@ The curve shows the relative tonal shape, before headroom and trim. The meter sh
 
 ## Audio design
 
-The filter is a monotonic RBJ low shelf (slope S=1), calculated and processed in 64-bit floating point. Core Audio input and output buffers remain 32-bit float. Left and right channels have independent state. There is no compression, limiting, saturation, or lossy encoding.
+The filter is a monotonic RBJ low shelf (adjustable slope S=0.1–1), calculated and processed in 64-bit floating point. Core Audio input and output buffers remain 32-bit float. Left and right channels have independent state. There is no compression, limiting, saturation, or lossy encoding.
 
 Controls ramp over approximately 50 ms rather than changing instantaneously. Settled bypass copies each float sample exactly. The callback uses no memory allocation, locks, Swift object management, file access, or logging. Settings and meters cross threads through lock-free atomics. No fast-math optimizations are enabled.
 
@@ -42,7 +43,7 @@ Headroom reduces clipping risk but does not guarantee protection from every tran
 ./scripts/check.sh
 ```
 
-The checks run without XCTest so they also work with Command Line Tools. They exercise actual DSP samples, shelf endpoints and midpoint across 44.1–192 kHz, monotonic response, headroom and trim, silence, stereo separation, bit-exact settled bypass, rapid control changes, and Core Audio buffer routing. The build treats Swift warnings as errors and checks C with `-Wall -Wextra -Werror`.
+The checks run without XCTest so they also work with Command Line Tools. They exercise actual DSP samples, shelf endpoints and midpoint across 44.1–192 kHz, monotonic response across steepness settings, transition width, live steepness changes, headroom and trim, silence, stereo separation, bit-exact settled bypass, rapid control changes, and Core Audio buffer routing. The build treats Swift warnings as errors and checks C with `-Wall -Wextra -Werror`.
 
 Live routing, presets, bypass, and stop were exercised on macOS 15.1 with External Headphones at 48 kHz. Other hardware, Bluetooth switching, permission denial, sleep/wake, and OS versions still need hardware validation.
 
