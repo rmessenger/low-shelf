@@ -8,7 +8,7 @@ struct LowShelfApp: App {
     @StateObject private var model = AppModel()
 
     var body: some Scene {
-        WindowGroup("LowShelf") {
+        Window("LowShelf", id: "main") {
             ContentView(model: model)
                 .frame(width: 510, height: 660)
                 .preferredColorScheme(.dark)
@@ -25,6 +25,18 @@ struct LowShelfApp: App {
             }
         }
         MenuBarExtra("LowShelf", systemImage: "waveform.path") {
+            LowShelfMenu(model: model)
+        }
+    }
+}
+
+@available(macOS 14.2, *)
+struct LowShelfMenu: View {
+    @ObservedObject var model: AppModel
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Group {
             Text("LowShelf · \(model.outputName)")
             Button(model.running ? "Stop processing" : "Start processing") {
                 model.running ? model.stop() : model.start()
@@ -32,8 +44,8 @@ struct LowShelfApp: App {
             Toggle("Bypass", isOn: $model.bypass)
             Divider()
             Button("Show LowShelf") {
+                openWindow(id: "main")
                 NSApp.activate(ignoringOtherApps: true)
-                NSApp.windows.first(where: { $0.canBecomeMain })?.makeKeyAndOrderFront(nil)
             }
             Button("Quit LowShelf") { NSApp.terminate(nil) }.keyboardShortcut("q")
         }
