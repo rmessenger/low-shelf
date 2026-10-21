@@ -15,8 +15,8 @@ Press **Start listening**. If macOS asks, allow LowShelf to capture system audio
 
 ## Controls
 
-- **Bass boost:** 0–12 dB relative to mids and highs.
-- **Shelf midpoint:** 40–250 Hz, the point at half the selected boost. Lower values emphasize deep bass; higher values add warmth.
+- **Bass boost:** 0–24 dB relative to mids and highs.
+- **Shelf midpoint:** 20–500 Hz, the point at half the selected boost. Lower values emphasize deep bass; higher values add warmth.
 - **Automatic headroom:** reduces gain by the boost amount plus 1 dB. Boosting bass therefore makes mids and highs quieter. Raise your normal playback volume if desired.
 - **Output trim:** an additional 0–18 dB reduction for unusually hot material or transients.
 - **Bypass:** smoothly restores unprocessed audio at its original level, including bypassing headroom and trim. It may sound louder. Command-B toggles it.

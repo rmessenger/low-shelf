@@ -18,8 +18,8 @@ struct BassDSP {
 };
 static double clamp(double x, double lo, double hi) { return fmax(lo, fmin(hi, x)); }
 static uint64_t pack(double boost, double frequency, double trim, bool bypass) {
-    uint64_t b = (uint64_t)llround(clamp(boost, 0, 12) * 100);
-    uint64_t f = (uint64_t)llround(clamp(frequency, 40, 250) * 100);
+    uint64_t b = (uint64_t)llround(clamp(boost, 0, 24) * 100);
+    uint64_t f = (uint64_t)llround(clamp(frequency, 20, 500) * 100);
     uint64_t t = (uint64_t)llround(clamp(-trim, 0, 18) * 100);
     return b | (f << 16) | (t << 32) | ((uint64_t)bypass << 48);
 }
@@ -40,8 +40,8 @@ BassDSP *bass_create(double rate, double boost, double frequency, double trim) {
     BassDSP *dsp = calloc(1, sizeof(*dsp));
     if (!dsp) return NULL;
     dsp->rate = rate;
-    dsp->boost = clamp(boost, 0, 12);
-    dsp->frequency = clamp(frequency, 40, 250);
+    dsp->boost = clamp(boost, 0, 24);
+    dsp->frequency = clamp(frequency, 20, 500);
     dsp->trim = clamp(trim, -18, 0);
     dsp->wet = 1;
     dsp->coefficients = shelf(rate, dsp->boost, dsp->frequency);
@@ -65,8 +65,8 @@ static void frame(BassDSP *dsp, double left, double right, double *out_left, dou
     bool bypass = (settings >> 48) != 0;
     double step = 1 / (0.05 * dsp->rate);
     if (dsp->boost != boost || dsp->frequency != frequency) {
-        dsp->boost = approach(dsp->boost, boost, 12 * step);
-        dsp->frequency = approach(dsp->frequency, frequency, 210 * step);
+        dsp->boost = approach(dsp->boost, boost, 24 * step);
+        dsp->frequency = approach(dsp->frequency, frequency, 480 * step);
         dsp->coefficients = shelf(dsp->rate, dsp->boost, dsp->frequency);
     }
     dsp->trim = approach(dsp->trim, trim, 18 * step);

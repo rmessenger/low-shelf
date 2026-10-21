@@ -30,7 +30,7 @@ final class BassDSPTests {
 
     func testShelfEndpointsAndMidpointAcrossSampleRates() {
         for rate in [44100.0, 48000, 96000, 192000] {
-            for boost in [0.0, 3, 6, 12] {
+            for boost in [0.0, 3, 6, 12, 24] {
                 expectEqual(bass_response(rate, boost, 100, 0), boost, accuracy: 1e-6)
                 expectEqual(bass_response(rate, boost, 100, 100), boost / 2, accuracy: 1e-6)
                 expectEqual(bass_response(rate, boost, 100, rate / 2), 0, accuracy: 1e-6)
@@ -39,11 +39,11 @@ final class BassDSPTests {
     }
 
     func testShelfIsMonotonicWithoutResonantOvershoot() {
-        for frequency in [40.0, 100, 250] {
-            var previous = 12.00001
+        for frequency in [20.0, 40, 100, 250, 500] {
+            var previous = 24.00001
             for step in 0...500 {
                 let hz = 20 * pow(1000, Double(step) / 500)
-                let db = bass_response(48000, 12, frequency, hz)
+                let db = bass_response(48000, 24, frequency, hz)
                 expectLessOrEqual(db, previous + 1e-7)
                 expectGreaterOrEqual(db, -1e-7)
                 previous = db
@@ -52,13 +52,15 @@ final class BassDSPTests {
     }
 
     func testActualAudioHasExpectedBassAndTrebleGain() throws {
-        for hz in [20.0, 100, 1000, 10000] {
-            let dsp = try processor()
-            defer { bass_destroy(dsp) }
-            let input = tone(hz: hz)
-            let output = process(dsp, input)
-            let measured = 20 * log10(rms(Array(output.suffix(48000))) / rms(Array(input.suffix(48000))))
-            expectEqual(measured, bass_response(48000, 6, 100, hz) - 7, accuracy: 0.001)
+        for (boost, midpoint) in [(6.0, 100.0), (24, 20), (24, 500)] {
+            for hz in [20.0, 100, 500, 1000, 10000] {
+                let dsp = try processor(boost: boost, frequency: midpoint)
+                defer { bass_destroy(dsp) }
+                let input = tone(hz: hz)
+                let output = process(dsp, input)
+                let measured = 20 * log10(rms(Array(output.suffix(48000))) / rms(Array(input.suffix(48000))))
+                expectEqual(measured, bass_response(48000, boost, midpoint, hz) - boost - 1, accuracy: 0.001)
+            }
         }
     }
 
@@ -116,7 +118,7 @@ final class BassDSPTests {
         defer { bass_destroy(dsp) }
         let input = Array(tone(hz: 100).prefix(512))
         for i in 0..<500 {
-            bass_configure(dsp, Double(i % 13), Double(40 + i % 211), -Double(i % 19), i % 3 == 0)
+            bass_configure(dsp, Double(i % 25), Double(20 + i % 481), -Double(i % 19), i % 3 == 0)
             let output = process(dsp, input)
             expectTrue(output.allSatisfy { $0.isFinite && abs($0) < 1 })
         }

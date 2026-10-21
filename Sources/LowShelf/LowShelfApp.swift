@@ -90,8 +90,8 @@ struct ContentView: View {
                 }.frame(height: 12).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
             }.padding(16).background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 14))
             VStack(spacing: 17) {
-                control("Bass boost", value: $model.boost, range: 0...12, unit: "dB", decimals: 1)
-                control("Shelf midpoint", value: $model.frequency, range: 40...250, unit: "Hz", decimals: 0)
+                control("Bass boost", value: $model.boost, range: 0...24, unit: "dB", decimals: 1)
+                control("Shelf midpoint", value: $model.frequency, range: 20...500, unit: "Hz", decimals: 0)
                 HStack(spacing: 8) {
                     preset("Subtle", boost: 3, frequency: 80)
                     preset("Warm", boost: 5, frequency: 120)
@@ -179,8 +179,8 @@ struct ResponseCurve: View {
     var body: some View {
         Canvas { context, size in
             let baseline = size.height - 8
-            for db in [0.0, 6.0, 12.0] {
-                let y = baseline - db / 12 * (size.height - 18)
+            for db in [0.0, 12.0, 24.0] {
+                let y = baseline - db / 24 * (size.height - 18)
                 var line = Path()
                 line.move(to: CGPoint(x: 0, y: y)); line.addLine(to: CGPoint(x: size.width, y: y))
                 context.stroke(line, with: .color(.white.opacity(0.08)), style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
@@ -190,7 +190,7 @@ struct ResponseCurve: View {
                 let x = Double(index) / 300
                 let hz = 20 * pow(1000, x)
                 let db = bass_response(max(44100, sampleRate), boost, frequency, hz)
-                let point = CGPoint(x: x * size.width, y: baseline - db / 12 * (size.height - 18))
+                let point = CGPoint(x: x * size.width, y: baseline - db / 24 * (size.height - 18))
                 if index == 0 { curve.move(to: point) } else { curve.addLine(to: point) }
             }
             var area = curve

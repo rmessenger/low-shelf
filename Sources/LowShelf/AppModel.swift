@@ -26,8 +26,8 @@ final class AppModel: ObservableObject {
     init() {
         let defaults = UserDefaults.standard
         defaults.register(defaults: ["boost": 4.0, "frequency": 100.0, "trim": 0.0])
-        boost = min(12, max(0, defaults.double(forKey: "boost")))
-        frequency = min(250, max(40, defaults.double(forKey: "frequency")))
+        boost = min(24, max(0, defaults.double(forKey: "boost")))
+        frequency = min(500, max(20, defaults.double(forKey: "frequency")))
         trim = min(0, max(-18, defaults.double(forKey: "trim")))
         refreshOutput()
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
