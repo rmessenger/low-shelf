@@ -20,10 +20,18 @@ Press **Enable bass boost**. If macOS asks, allow LowShelf to capture system aud
 - **Shelf steepness:** 10–100%. Lower values make a broader, gentler transition. 100% matches the original curve and is the steepest setting without a resonant bump. Presets restore 100%.
 - **Automatic headroom:** reduces gain by the boost amount plus 1 dB. Boosting bass therefore makes mids and highs quieter. Raise your normal playback volume if desired.
 - **Output trim:** an additional 0–18 dB reduction for unusually hot material or transients.
-- **Enable / Disable bass boost:** starts or stops processing. Disabling removes the audio route and restores ordinary playback at its original volume, which may sound louder. Command-E toggles it.
+- **Enable / Disable bass boost:** starts or stops processing. Disabling removes the audio route and restores ordinary playback at its original volume, which may sound louder. **Control–Option–Command–B (⌃⌥⌘B)** toggles it globally while LowShelf is running, including when its window is closed. Command-E also works inside LowShelf.
 - **Menu-bar icon:** a filled waveform circle means enabled; an outlined waveform circle means disabled. The icon follows actual processing state, including automatic stops and failed starts.
 
 The curve shows the relative tonal shape, before headroom and trim. The meter shows processed sample peaks, not reconstructed true peaks. Presets and sliders are saved; processing never starts automatically. Closing the window leaves the menu-bar control running. Quit removes the audio route.
+
+## Global keyboard shortcut
+
+LowShelf registers ⌃⌥⌘B with macOS's native hotkey API. It does not need Accessibility or Input Monitoring access. The shortcut toggles once per key press, ignores held-key repeats, and does not bring LowShelf to the foreground. Quit releases the shortcut.
+
+At launch, LowShelf checks enabled macOS symbolic shortcuts and requests exclusive registration. If registration fails, the window displays a persistent message and the on-screen controls remain usable. This detects registered global hotkeys, not every app-specific menu shortcut or key remapper. The chosen combination is not configured as a system shortcut on the development Mac; applications may still assign it locally (for example, Xcode has used it for an Analyze command).
+
+The original ⌃⌥B candidate was avoided because Apple uses it for backward word navigation and a VoiceOver reading command. See [Apple's Pages shortcuts](https://support.apple.com/en-au/guide/pages/-tanc0ffef022/mac) and [VoiceOver web commands](https://support.apple.com/en-ae/guide/voiceover/vo27972/10/mac/27).
 
 ## Audio design
 
@@ -43,15 +51,17 @@ Headroom reduces clipping risk but does not guarantee protection from every tran
 ./scripts/check.sh
 ```
 
-The checks run without XCTest so they also work with Command Line Tools. They exercise actual DSP samples, shelf endpoints and midpoint across 44.1–192 kHz, monotonic response across steepness settings, transition width, live steepness changes, headroom and trim, silence, stereo separation, rapid control changes, and Core Audio buffer routing. The build treats Swift warnings as errors and checks C with `-Wall -Wextra -Werror`.
+The checks run without XCTest so they also work with Command Line Tools. They exercise actual DSP samples, shelf endpoints and midpoint across 44.1–192 kHz, monotonic response across steepness settings, transition width, live steepness changes, headroom and trim, silence, stereo separation, rapid control changes, and Core Audio buffer routing. Additional native hotkey checks verify conflict detection, registration cleanup, event delivery, and held-key repeat suppression. The build treats Swift warnings as errors and checks C with `-Wall -Wextra -Werror`.
 
 Live routing, presets, and enable/disable controls were exercised on macOS 15.1 with External Headphones at 48 kHz. Other hardware, Bluetooth switching, permission denial, sleep/wake, and OS versions still need hardware validation.
 
 ## Layout
 
 - `Sources/BassDSP`: C audio callback, double-precision filter, atomic controls/meters.
+- `Sources/HotKeySupport`: native global shortcut registration and keyboard handling.
 - `Sources/LowShelf`: SwiftUI app, device/tap lifecycle, saved settings.
 - `Tests/BassDSPTests`: standalone numerical and buffer-routing checks.
+- `Tests/HotKeyChecks`: native registration, lifecycle, and event-delivery checks.
 - `scripts`: build, local signing, icon generation, and verification.
 
 The shelf equations follow the [W3C Audio EQ Cookbook](https://www.w3.org/TR/audio-eq-cookbook/). Routing uses [Apple's Core Audio taps](https://developer.apple.com/documentation/coreaudio/capturing-system-audio-with-core-audio-taps).

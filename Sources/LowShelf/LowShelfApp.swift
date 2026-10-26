@@ -19,7 +19,7 @@ struct LowShelfApp: App {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Audio") {
                 Button(model.running ? "Disable bass boost" : "Enable bass boost") {
-                    model.running ? model.stop() : model.start()
+                    model.toggle()
                 }.keyboardShortcut("e", modifiers: .command)
             }
         }
@@ -41,8 +41,9 @@ struct LowShelfMenu: View {
     var body: some View {
         Group {
             Text("LowShelf · \(model.outputName)")
+            Text(model.shortcutError == nil ? "Toggle globally: \(AppModel.shortcutLabel)" : "Global shortcut unavailable")
             Button(model.running ? "Disable bass boost" : "Enable bass boost") {
-                model.running ? model.stop() : model.start()
+                model.toggle()
             }
             Divider()
             Button("Show LowShelf") {
@@ -136,16 +137,21 @@ struct ContentView: View {
                 }.font(.system(size: 11)).foregroundStyle(.secondary)
                 HStack {
                     Button(model.running ? "Disable bass boost" : "Enable bass boost") {
-                        model.running ? model.stop() : model.start()
+                        model.toggle()
                     }
                     .buttonStyle(.borderedProminent).tint(accent).foregroundStyle(.black)
                     .controlSize(.large)
+                    .help("Toggle from any app with Control–Option–Command–B.")
                     Spacer()
+                    Text(model.shortcutError == nil ? AppModel.shortcutLabel : "Shortcut unavailable")
+                        .font(.system(size: 12, design: .monospaced)).foregroundStyle(.secondary)
+                        .accessibilityLabel(model.shortcutError == nil
+                            ? "Global shortcut: Control Option Command B" : "Global shortcut unavailable")
                 }
-                Text(model.error ?? model.warning ?? (model.running
+                Text(model.error ?? model.shortcutError ?? model.warning ?? (model.running
                     ? "Bass boost is enabled. Disabling restores normal playback and volume."
                     : "Bass boost is disabled. Enable it to apply your settings."))
-                    .font(.system(size: 11)).foregroundStyle(model.error != nil ? .orange : .secondary)
+                    .font(.system(size: 11)).foregroundStyle((model.error != nil || model.shortcutError != nil) ? .orange : .secondary)
                     .lineLimit(3).frame(height: 42, alignment: .topLeading).textSelection(.enabled)
             }
         }

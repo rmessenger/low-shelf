@@ -1,11 +1,14 @@
 import AppKit
 import BassDSP
 import Combine
+import Carbon
+import HotKeySupport
 import CoreAudio
 
 @available(macOS 14.2, *)
 @MainActor
 final class AppModel: ObservableObject {
+    static let shortcutLabel = "⌃⌥⌘B"
     @Published var boost: Double { didSet { update() } }
     @Published var frequency: Double { didSet { update() } }
     @Published var steepness: Double { didSet { update() } }
@@ -16,6 +19,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var peak: Float = 0
     @Published private(set) var warning: String?
     @Published private(set) var error: String?
+    @Published private(set) var shortcutError: String?
+    private var globalShortcut: GlobalHotKey?
     private let engine = AudioEngine()
     private var timer: Timer?
     private var routeTicks = 0
@@ -36,7 +41,10 @@ final class AppModel: ObservableObject {
         }
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification,
             object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.stop() }
+                MainActor.assumeIsolated {
+                    self?.globalShortcut = nil
+                    self?.stop()
+                }
             }
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification,
             object: nil, queue: .main) { [weak self] _ in
@@ -46,6 +54,17 @@ final class AppModel: ObservableObject {
                     self.warning = "Disabled for sleep. Enable bass boost when you return."
                 }
             }
+        do {
+            globalShortcut = try GlobalHotKey(
+                keyCode: UInt32(kVK_ANSI_B), modifiers: UInt32(controlKey | optionKey | cmdKey)
+            ) { [weak self] in self?.toggle() }
+        } catch {
+            shortcutError = error.localizedDescription
+        }
+    }
+
+    func toggle() {
+        running ? stop() : start()
     }
 
     private func update() {
