@@ -1,6 +1,6 @@
 # LowShelf
 
-A small native macOS equalizer for adjustable, system-wide bass. SwiftUI interface; Core Audio process taps; no dependencies, kernel extensions, accounts, or network access. Requires macOS 14.2 or newer and a stereo output.
+A native macOS equalizer for adjustable system-wide bass, with a local headphone-profile and A/B tuning experiment. SwiftUI interface; Core Audio process taps; no dependencies, kernel extensions, accounts, or network access. Requires macOS 14.2 or newer and a stereo output.
 
 ## Run
 
@@ -33,7 +33,13 @@ At launch, LowShelf checks enabled macOS symbolic shortcuts and requests exclusi
 
 The original ⌃⌥B candidate was avoided because Apple uses it for backward word navigation and a VoiceOver reading command. See [Apple's Pages shortcuts](https://support.apple.com/en-au/guide/pages/-tanc0ffef022/mac) and [VoiceOver web commands](https://support.apple.com/en-ae/guide/voiceover/vo27972/10/mac/27).
 
-## Audio design
+## Headphone profiles and A/B tuning
+
+Open **Headphones**, add a named profile, then choose **Start A/B tuning** and enable EQ. Listen to both A and B before voting. Choose strongly/slightly prefer A, can’t tell the difference, or slightly/strongly prefer B. Undo is available. **Use this tuning** adopts the suggestion; **Pause** returns to the saved curves. The gear button manages headphones, and **Curve & session** holds the optional left/right graph and saved/suggested listening controls. Existing profiles and their tuning history migrate automatically, with an original-file backup on the first save. Sessions and profiles stay on this Mac. The **Bass** tab retains the original controls.
+
+The experimental full-range processor has nine overlapping bands per ear, attenuation-only output with 6 dB additional headroom, and smooth A/B transitions. [Design, algorithm, limitations, and simulation instructions](docs/tuning.md).
+
+## Audio design (bass mode)
 
 The filter is a monotonic RBJ low shelf (adjustable slope S=0.1–1), calculated and processed in 64-bit floating point. Core Audio input and output buffers remain 32-bit float. Left and right channels have independent state. There is no compression, limiting, saturation, or lossy encoding.
 

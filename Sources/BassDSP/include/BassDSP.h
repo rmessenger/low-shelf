@@ -9,6 +9,9 @@ BassDSP *bass_create(double sample_rate, double boost_db, double frequency, doub
 OSStatus bass_attach(AudioObjectID device, BassDSP *dsp, AudioDeviceIOProcID *io_proc);
 OSStatus bass_select_tap_input(AudioObjectID device, AudioDeviceIOProcID io_proc, uint32_t stream_count);
 void bass_destroy(BassDSP *dsp);
+// Single control-thread writer; coefficients are nine [b0,b1,b2,a1,a2] sections.
+void bass_equalizer(BassDSP *dsp, const double *coefficients, double gain_db, bool enabled);
+void bass_equalizer_stereo(BassDSP *dsp, const double *left, const double *right, double left_gain_db, double right_gain_db, bool enabled);
 void bass_configure(BassDSP *dsp, double boost_db, double frequency, double steepness, double trim_db);
 void bass_process(BassDSP *dsp, const float *input, float *output, uint32_t frames);
 float bass_take_peak(BassDSP *dsp);

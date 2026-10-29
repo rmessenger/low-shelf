@@ -1,6 +1,7 @@
 import BassDSP
 import CoreAudio
 import Foundation
+import TuningCore
 
 struct AudioFailure: LocalizedError {
     let message: String
@@ -88,7 +89,7 @@ final class AudioEngine {
         }
     }
 
-    func start(boost: Double, frequency: Double, steepness: Double, trim: Double) throws {
+    func start(boost: Double, frequency: Double, steepness: Double, trim: Double, curve: StereoEQCurve? = nil, gain: StereoGain? = nil) throws {
         guard !running else { return }
         do {
             let device = try Self.defaultOutput()
@@ -142,6 +143,7 @@ final class AudioEngine {
             }
             dsp = processor
             bass_configure(processor, boost, frequency, steepness, trim)
+            apply(curve: curve, gain: gain, rate: device.rate)
             try checkAudio(bass_attach(aggregate, processor, &ioProc), "Create audio callback")
             try checkAudio(bass_select_tap_input(aggregate, ioProc, UInt32(inputStreams.count)), "Select system audio input")
             try checkAudio(AudioDeviceStart(aggregate, ioProc), "Start audio")
@@ -151,6 +153,20 @@ final class AudioEngine {
             let cleanup = stop()
             if let cleanup { throw AudioFailure(message: "\(error.localizedDescription) Cleanup: \(cleanup)") }
             throw error
+        }
+    }
+
+    func apply(curve: StereoEQCurve?, gain: StereoGain? = nil, rate: Double? = nil) {
+        guard let dsp else { return }
+        guard let curve else { bass_equalizer(dsp, nil, 0, false); return }
+        let sampleRate = rate ?? output?.rate ?? 48000
+        let left = curve.left.gains.indices.flatMap { curve.left.coefficients(index: $0, gain: curve.left.gains[$0], rate: sampleRate) }
+        let right = curve.right.gains.indices.flatMap { curve.right.coefficients(index: $0, gain: curve.right.gains[$0], rate: sampleRate) }
+        let attenuation = gain ?? curve.playbackGain(rate: sampleRate)
+        left.withUnsafeBufferPointer { l in
+            right.withUnsafeBufferPointer { r in
+                bass_equalizer_stereo(dsp, l.baseAddress, r.baseAddress, attenuation.left, attenuation.right, true)
+            }
         }
     }
 

@@ -9,8 +9,11 @@ struct LowShelfApp: App {
 
     var body: some Scene {
         Window("LowShelf", id: "main") {
-            ContentView(model: model)
-                .frame(width: 510, height: 730)
+            TabView(selection: $model.headphonesMode) {
+                ContentView(model: model).tabItem { Text("Bass") }.tag(false)
+                TuningView(model: model).tabItem { Text("Headphones") }.tag(true)
+            }
+                .frame(width: 650, height: 820)
                 .preferredColorScheme(.dark)
         }
         .windowResizability(.contentSize)
@@ -18,7 +21,7 @@ struct LowShelfApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Audio") {
-                Button(model.running ? "Disable bass boost" : "Enable bass boost") {
+                Button(model.running ? "Disable EQ" : "Enable EQ") {
                     model.toggle()
                 }.keyboardShortcut("e", modifiers: .command)
             }
@@ -27,8 +30,8 @@ struct LowShelfApp: App {
             LowShelfMenu(model: model)
         } label: {
             Image(systemName: model.running ? "waveform.circle.fill" : "waveform.circle")
-                .accessibilityLabel(model.running ? "LowShelf — bass boost enabled" : "LowShelf — bass boost disabled")
-                .help(model.running ? "LowShelf — bass boost enabled" : "LowShelf — bass boost disabled")
+                .accessibilityLabel(model.running ? "LowShelf — EQ enabled" : "LowShelf — EQ disabled")
+                .help(model.running ? "LowShelf — EQ enabled" : "LowShelf — EQ disabled")
         }
     }
 }
@@ -42,7 +45,7 @@ struct LowShelfMenu: View {
         Group {
             Text("LowShelf · \(model.outputName)")
             Text(model.shortcutError == nil ? "Toggle globally: \(AppModel.shortcutLabel)" : "Global shortcut unavailable")
-            Button(model.running ? "Disable bass boost" : "Enable bass boost") {
+            Button(model.running ? "Disable EQ" : "Enable EQ") {
                 model.toggle()
             }
             Divider()
@@ -136,7 +139,7 @@ struct ContentView: View {
                     Text(String(format: "%.1f kHz", model.sampleRate / 1000)).monospacedDigit()
                 }.font(.system(size: 11)).foregroundStyle(.secondary)
                 HStack {
-                    Button(model.running ? "Disable bass boost" : "Enable bass boost") {
+                    Button(model.running ? "Disable EQ" : "Enable EQ") {
                         model.toggle()
                     }
                     .buttonStyle(.borderedProminent).tint(accent).foregroundStyle(.black)

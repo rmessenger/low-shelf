@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 swift build -c release --product LowShelf -Xswiftc -warnings-as-errors
 BIN_DIR="$(swift build -c release --show-bin-path)"
-APP="$PWD/dist/LowShelf.app"
+APP="${1:-$PWD/dist/LowShelf.app}"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 swift scripts/make-icon.swift "$PWD/dist/AppIcon.iconset"
 iconutil -c icns "$PWD/dist/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"

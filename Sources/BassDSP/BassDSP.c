@@ -8,6 +8,12 @@ _Static_assert(ATOMIC_LLONG_LOCK_FREE == 2, "Real-time controls require lock-fre
 _Static_assert(ATOMIC_INT_LOCK_FREE == 2, "Real-time meters require lock-free atomics");
 typedef struct { double b0, b1, b2, a1, a2; } Coefficients;
 typedef struct { double x1, x2, y1, y2; } History;
+enum { EQ_BANDS = 9, EQ_VALUES = 93 };
+typedef struct {
+    Coefficients coefficients[EQ_BANDS][2];
+    History history[EQ_BANDS][2];
+    double gain[2];
+} EQBank;
 struct BassDSP {
     double rate, boost, frequency, steepness, trim;
     Coefficients coefficients;
@@ -15,6 +21,12 @@ struct BassDSP {
     _Atomic uint64_t settings;
     _Atomic uint32_t peak_bits, faults;
     _Atomic uint64_t callbacks;
+    _Atomic uint64_t eq_sequence, eq_values[EQ_VALUES];
+    uint64_t eq_seen;
+    EQBank eq[2];
+    int eq_current;
+    uint32_t eq_remaining, eq_duration;
+    double eq_mix, eq_enabled;
 };
 static double clamp(double x, double lo, double hi) { return fmax(lo, fmin(hi, x)); }
 static uint64_t pack(double boost, double frequency, double steepness, double trim) {
@@ -50,11 +62,84 @@ BassDSP *bass_create(double rate, double boost, double frequency, double steepne
     atomic_init(&dsp->peak_bits, 0);
     atomic_init(&dsp->faults, 0);
     atomic_init(&dsp->callbacks, 0);
+    atomic_init(&dsp->eq_sequence, 0);
+    for (int i = 0; i < EQ_VALUES; i++) atomic_init(&dsp->eq_values[i], 0);
+    dsp->eq_duration = (uint32_t)(rate * 0.05);
+    for (int b = 0; b < 2; b++) {
+        for (int ch = 0; ch < 2; ch++) {
+            dsp->eq[b].gain[ch] = 1;
+            for (int i = 0; i < EQ_BANDS; i++) dsp->eq[b].coefficients[i][ch].b0 = 1;
+        }
+    }
     return dsp;
 }
 void bass_destroy(BassDSP *dsp) { free(dsp); }
 void bass_configure(BassDSP *dsp, double boost, double frequency, double steepness, double trim) {
     atomic_store_explicit(&dsp->settings, pack(boost, frequency, steepness, trim), memory_order_relaxed);
+}
+void bass_equalizer(BassDSP *dsp, const double *coefficients, double gain_db, bool enabled) {
+    bass_equalizer_stereo(dsp, coefficients, coefficients, gain_db, gain_db, enabled);
+}
+void bass_equalizer_stereo(BassDSP *dsp, const double *left, const double *right,
+                           double left_gain_db, double right_gain_db, bool enabled) {
+    double values[EQ_VALUES] = {0};
+    const double *channels[2] = {left, right};
+    for (int ch = 0; ch < 2; ch++) {
+        for (int i = 0; i < EQ_BANDS * 5; i++) {
+            if (enabled && (!channels[ch] || !isfinite(channels[ch][i]))) return;
+            values[ch * 45 + i] = enabled ? channels[ch][i] : (i % 5 == 0 ? 1 : 0);
+        }
+    }
+    if (!isfinite(left_gain_db) || !isfinite(right_gain_db)) return;
+    values[90] = pow(10, fmin(0, left_gain_db) / 20);
+    values[91] = pow(10, fmin(0, right_gain_db) / 20);
+    values[92] = enabled ? 1 : 0;
+    // Atomic payload avoids data races; the callback never waits for the writer.
+    atomic_fetch_add_explicit(&dsp->eq_sequence, 1, memory_order_seq_cst);
+    for (int i = 0; i < EQ_VALUES; i++) {
+        uint64_t bits; memcpy(&bits, &values[i], sizeof(bits));
+        atomic_store_explicit(&dsp->eq_values[i], bits, memory_order_seq_cst);
+    }
+    atomic_fetch_add_explicit(&dsp->eq_sequence, 1, memory_order_seq_cst);
+}
+static void prepare_equalizer(BassDSP *dsp) {
+    if (dsp->eq_remaining) return;
+    uint64_t before = atomic_load_explicit(&dsp->eq_sequence, memory_order_seq_cst);
+    if ((before & 1) || before == dsp->eq_seen) return;
+    double values[EQ_VALUES];
+    for (int i = 0; i < EQ_VALUES; i++) {
+        uint64_t bits = atomic_load_explicit(&dsp->eq_values[i], memory_order_seq_cst);
+        memcpy(&values[i], &bits, sizeof(bits));
+    }
+    if (before != atomic_load_explicit(&dsp->eq_sequence, memory_order_seq_cst)) return;
+    dsp->eq_seen = before;
+    dsp->eq_enabled = values[92];
+    EQBank *bank = &dsp->eq[1 - dsp->eq_current];
+    memset(bank->history, 0, sizeof(bank->history));
+    for (int ch = 0; ch < 2; ch++) {
+        for (int i = 0; i < EQ_BANDS; i++) {
+            const double *c = &values[ch * 45 + i * 5];
+            bank->coefficients[i][ch] = (Coefficients){c[0], c[1], c[2], c[3], c[4]};
+        }
+        bank->gain[ch] = values[90 + ch];
+    }
+    dsp->eq_remaining = dsp->eq_duration;
+}
+static double equalizer_channel(BassDSP *dsp, EQBank *bank, int ch, double input) {
+    double x = input * bank->gain[ch];
+    for (int i = 0; i < EQ_BANDS; i++) {
+        Coefficients c = bank->coefficients[i][ch];
+        History *h = &bank->history[i][ch];
+        double y = c.b0*x + c.b1*h->x1 + c.b2*h->x2 - c.a1*h->y1 - c.a2*h->y2;
+        if (!isfinite(y)) {
+            memset(h, 0, sizeof(*h));
+            atomic_fetch_or_explicit(&dsp->faults, 2, memory_order_relaxed);
+            y = 0;
+        }
+        h->x2 = h->x1; h->x1 = x; h->y2 = h->y1; h->y1 = fabs(y) < 1e-30 ? 0 : y;
+        x = y;
+    }
+    return x;
 }
 static double approach(double value, double target, double step) {
     return value + clamp(target - value, -step, step);
@@ -89,6 +174,19 @@ static void frame(BassDSP *dsp, double left, double right, double *out_left, dou
         }
         results[ch] = y * gain;
     }
+    if (dsp->eq_mix > 0 || dsp->eq_enabled > 0 || dsp->eq_remaining) {
+        double blend = dsp->eq_remaining ? 1 - (double)dsp->eq_remaining / dsp->eq_duration : 0;
+        dsp->eq_mix = approach(dsp->eq_mix, dsp->eq_enabled, 1.0 / dsp->eq_duration);
+        for (int ch = 0; ch < 2; ch++) {
+            double wet = equalizer_channel(dsp, &dsp->eq[dsp->eq_current], ch, inputs[ch]);
+            if (dsp->eq_remaining) {
+                double next = equalizer_channel(dsp, &dsp->eq[1-dsp->eq_current], ch, inputs[ch]);
+                wet = wet*(1-blend) + next*blend;
+            }
+            results[ch] = results[ch]*(1-dsp->eq_mix) + wet*dsp->eq_mix;
+        }
+        if (dsp->eq_remaining && --dsp->eq_remaining == 0) dsp->eq_current = 1-dsp->eq_current;
+    }
     *out_left = results[0]; *out_right = results[1];
 }
 static void meter(BassDSP *dsp, float peak) {
@@ -103,6 +201,7 @@ float bass_take_peak(BassDSP *dsp) {
 uint32_t bass_take_faults(BassDSP *dsp) { return atomic_exchange_explicit(&dsp->faults, 0, memory_order_relaxed); }
 uint64_t bass_callbacks(BassDSP *dsp) { return atomic_load_explicit(&dsp->callbacks, memory_order_relaxed); }
 void bass_process(BassDSP *dsp, const float *input, float *output, uint32_t frames) {
+    prepare_equalizer(dsp);
     uint64_t settings = atomic_load_explicit(&dsp->settings, memory_order_relaxed);
     float peak = 0;
     for (uint32_t i = 0; i < frames; ++i) {
@@ -153,6 +252,7 @@ OSStatus bass_io(AudioObjectID device, const AudioTimeStamp *now, const AudioBuf
         atomic_fetch_or_explicit(&dsp->faults, 1, memory_order_relaxed);
         return noErr;
     }
+    prepare_equalizer(dsp);
     uint64_t settings = atomic_load_explicit(&dsp->settings, memory_order_relaxed);
     float peak = 0;
     for (uint32_t i = 0; i < ol.frames; ++i) {
