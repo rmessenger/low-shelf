@@ -6,19 +6,13 @@ struct TuningView: View {
     @ObservedObject var model: AppModel
     @State private var name = ""
     @State private var manage = false
-    @State private var reveal = false
+    @State private var history = false
     @State private var deletion = false
-    @State private var restart = false
     private let accent = Color(red: 0.65, green: 0.91, blue: 0.62)
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                HStack {
-                    Text("Find your sound").font(.system(size: 27, weight: .semibold, design: .rounded))
-                    Spacer()
-                    Text(model.running ? "ENABLED" : "DISABLED").font(.caption.monospaced()).foregroundStyle(model.running ? accent : .secondary)
-                }
                 HStack {
                     Picker("Headphones", selection: Binding(get: { model.library.selected }, set: { model.selectProfile($0) })) {
                         Text("Choose headphones").tag(Optional<UUID>.none)
@@ -28,47 +22,34 @@ struct TuningView: View {
                         .accessibilityLabel("Manage headphones")
                 }
                 if let profile = model.library.profile {
-                    if model.tuningActive, let session = profile.session, session.current != nil {
-                        HStack {
-                            Text("Comparison \(session.completedComparisons + 1)").font(.headline)
-                            Spacer()
-                            Button("Pause") { model.pauseTuning() }.font(.callout)
-                        }
-                        Text("Listen to the same passage with A and B. Which sounds better?")
-                            .foregroundStyle(.secondary)
-                        HStack(spacing: 12) { auditionButton(.a); auditionButton(.b) }.controlSize(.large)
-                        VStack(spacing: 8) {
+                    ProfileCurve(curve: model.currentCurve, accent: accent).frame(height: 190)
+                    HStack {
+                        Text("Current curve").font(.headline)
+                        Spacer()
+                        Button("History (\(profile.session?.completedComparisons ?? 0))") { history = true }
+                            .disabled((profile.session?.completedComparisons ?? 0) == 0)
+                    }
+                    HStack(spacing: 8) {
+                        auditionButton(.a); auditionButton(.current); auditionButton(.b)
+                    }.controlSize(.large)
+                    VStack(spacing: 12) {
+                        Text("Which sounds better?").font(.headline)
+                        HStack(spacing: 6) {
                             ForEach(PreferenceRating.allCases, id: \.self) { rating in
                                 Button { model.vote(rating) } label: {
-                                    Text(rating.label).frame(maxWidth: .infinity).padding(.vertical, 6)
+                                    Text(rating.buttonLabel)
+                                        .multilineTextAlignment(.center)
+                                        .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, minHeight: 42)
                                 }
                                 .buttonStyle(.bordered).disabled(!model.canVote)
+                                .accessibilityLabel(rating.label)
                             }
                         }
-                        Text(model.running ? (model.canVote ? "There’s no wrong answer. Each choice helps refine both ears." : "Listen to both A and B before choosing.") : "Enable EQ below to listen and choose.")
+                        Text(model.running ? (model.canVote ? "Each vote updates Current and saves automatically." : "Listen to both A and B to unlock voting.") : "Enable EQ to compare A and B.")
                             .font(.caption).foregroundStyle(.secondary)
-                        HStack {
-                            Button("Undo") { model.undoVote() }.disabled(session.answers.isEmpty)
-                            Spacer()
-                            Button("Use this tuning") { model.saveRecommendation() }
-                                .buttonStyle(.borderedProminent).tint(accent).foregroundStyle(.black)
-                        }
-                    } else {
-                        ProfileCurve(curve: profile.saved, accent: accent).frame(height: 180)
-                        Text("Tune the sound to your headphones and each ear, one simple comparison at a time.")
-                            .foregroundStyle(.secondary)
-                        Button(profile.session == nil ? "Start tuning" : "Continue tuning") { model.beginTuning() }
-                            .buttonStyle(.borderedProminent).tint(accent).foregroundStyle(.black).controlSize(.large)
                     }
-                    DisclosureGroup("Curve & session", isExpanded: $reveal) {
-                        VStack(alignment: .leading, spacing: 12) {
-                            ProfileCurve(curve: model.auditionCurve, accent: accent).frame(height: 130)
-                            HStack { auditionButton(.saved); auditionButton(.best) }
-                            Text("Keep playback volume steady. Level balancing is approximate. Progress saves automatically; Use this tuning applies the suggestion.")
-                                .font(.caption).foregroundStyle(.secondary)
-                            Button("Restart tuning…") { restart = true }.disabled(profile.session == nil)
-                        }.padding(.top, 12)
-                    }.font(.callout)
+
                 } else {
                     Text("Add your headphones to start finding the sound you prefer.").foregroundStyle(.secondary)
                     Button("Add headphones") { manage = true }.buttonStyle(.borderedProminent).tint(accent).foregroundStyle(.black)
@@ -76,6 +57,7 @@ struct TuningView: View {
                 Divider()
                 HStack {
                     Button(model.running ? "Disable EQ" : "Enable EQ") { model.toggle() }
+                    Text(model.running ? "ENABLED" : "DISABLED").font(.caption.monospaced()).foregroundStyle(model.running ? accent : .secondary)
                     Spacer()
                     Text(AppModel.shortcutLabel).font(.caption.monospaced()).foregroundStyle(.secondary)
                 }
@@ -86,9 +68,8 @@ struct TuningView: View {
         }
         .background(Color(red: 0.055, green: 0.073, blue: 0.069))
         .sheet(isPresented: $manage) { profileManager }
-        .confirmationDialog("Restart tuning? Your saved curves will be kept, but comparison history will be removed.", isPresented: $restart) {
-            Button("Restart tuning", role: .destructive) { model.resetTuning(); model.beginTuning() }
-        }
+        .sheet(isPresented: $history) { VoteHistoryView(model: model) }
+
     }
     private var profileManager: some View {
         VStack(alignment: .leading, spacing: 18) {

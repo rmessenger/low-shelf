@@ -89,14 +89,14 @@ final class AudioEngine {
         }
     }
 
-    func start(boost: Double, frequency: Double, steepness: Double, trim: Double, curve: StereoEQCurve? = nil, gain: StereoGain? = nil) throws {
+    func start(curve: StereoEQCurve, gain: StereoGain) throws {
         guard !running else { return }
         do {
             let device = try Self.defaultOutput()
             let outputStreams = try Self.streams(device.id, scope: kAudioObjectPropertyScopeOutput)
             let formats = try outputStreams.map { try Self.format($0) }
             guard formats.reduce(0, { $0 + $1.mChannelsPerFrame }) == 2 else {
-                throw AudioFailure(message: "LowShelf currently supports stereo outputs. Choose a stereo device in Sound settings.")
+                throw AudioFailure(message: "FineTune currently supports stereo outputs. Choose a stereo device in Sound settings.")
             }
             for format in formats { try Self.validate(format, rate: device.rate) }
             var pid = getpid()
@@ -104,10 +104,10 @@ final class AudioEngine {
             var property = Self.address(kAudioHardwarePropertyTranslatePIDToProcessObject)
             var size = UInt32(MemoryLayout<AudioObjectID>.size)
             try checkAudio(AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &property,
-                UInt32(MemoryLayout<pid_t>.size), &pid, &size, &process), "Identify LowShelf audio")
-            guard process != 0 else { throw AudioFailure(message: "Could not exclude LowShelf from capture.") }
+                UInt32(MemoryLayout<pid_t>.size), &pid, &size, &process), "Identify FineTune audio")
+            guard process != 0 else { throw AudioFailure(message: "Could not exclude FineTune from capture.") }
             let description = CATapDescription(excludingProcesses: [process], deviceUID: device.uid, stream: 0)
-            description.name = "LowShelf System Audio"
+            description.name = "FineTune System Audio"
             description.isPrivate = true
             description.muteBehavior = .mutedWhenTapped
             try checkAudio(AudioHardwareCreateProcessTap(description, &tap), "Create system audio tap")
@@ -118,7 +118,7 @@ final class AudioEngine {
             try Self.validate(tapFormat, rate: device.rate)
             let tapUID = try Self.string(tap, kAudioTapPropertyUID)
             let specification = NSMutableDictionary()
-            specification[kAudioAggregateDeviceNameKey] = "LowShelf Playback"
+            specification[kAudioAggregateDeviceNameKey] = "FineTune Playback"
             specification[kAudioAggregateDeviceUIDKey] = "app.lowshelf.playback.\(UUID().uuidString)"
             specification[kAudioAggregateDeviceIsPrivateKey] = true
             specification[kAudioAggregateDeviceMainSubDeviceKey] = device.uid
@@ -138,11 +138,10 @@ final class AudioEngine {
             for stream in try Self.streams(aggregate, scope: kAudioObjectPropertyScopeOutput) {
                 try Self.validate(Self.format(stream), rate: device.rate)
             }
-            guard let processor = bass_create(device.rate, boost, frequency, steepness, trim) else {
+            guard let processor = bass_create(device.rate, 0, 100, 1, 0) else {
                 throw AudioFailure(message: "Could not initialize the audio filter.")
             }
             dsp = processor
-            bass_configure(processor, boost, frequency, steepness, trim)
             apply(curve: curve, gain: gain, rate: device.rate)
             try checkAudio(bass_attach(aggregate, processor, &ioProc), "Create audio callback")
             try checkAudio(bass_select_tap_input(aggregate, ioProc, UInt32(inputStreams.count)), "Select system audio input")
@@ -156,9 +155,8 @@ final class AudioEngine {
         }
     }
 
-    func apply(curve: StereoEQCurve?, gain: StereoGain? = nil, rate: Double? = nil) {
+    func apply(curve: StereoEQCurve, gain: StereoGain? = nil, rate: Double? = nil) {
         guard let dsp else { return }
-        guard let curve else { bass_equalizer(dsp, nil, 0, false); return }
         let sampleRate = rate ?? output?.rate ?? 48000
         let left = curve.left.gains.indices.flatMap { curve.left.coefficients(index: $0, gain: curve.left.gains[$0], rate: sampleRate) }
         let right = curve.right.gains.indices.flatMap { curve.right.coefficients(index: $0, gain: curve.right.gains[$0], rate: sampleRate) }

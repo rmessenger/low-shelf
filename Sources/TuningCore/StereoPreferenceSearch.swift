@@ -28,6 +28,8 @@ public struct StereoComparison: Codable, Equatable, Sendable {
 public struct RatedAnswer: Codable, Sendable {
     public let comparison: StereoComparison
     public let rating: PreferenceRating
+    public let votedAt: Date?
+    let randomBeforeVote: SeededRandom?
     let direction: [Double]
     let offset: Double
 }
@@ -145,10 +147,10 @@ public struct StereoPreferenceSearch: Codable, Sendable {
         current = result
         return result
     }
-    public mutating func answer(_ rating: PreferenceRating) {
+    public mutating func answer(_ rating: PreferenceRating, at date: Date? = Date()) {
         guard let current else { return }
         let observation = Self.observation(current)
-        let answer = RatedAnswer(comparison: current, rating: rating,
+        let answer = RatedAnswer(comparison: current, rating: rating, votedAt: date, randomBeforeVote: random,
                                  direction: observation.direction, offset: observation.offset)
         answers.append(answer)
         update(answer)
@@ -195,10 +197,20 @@ public struct StereoPreferenceSearch: Codable, Sendable {
         for i in order { update(answers[i], at:model) }
     }
     public mutating func undo() {
-        guard !answers.isEmpty else { return }
-        let removed = answers.removeLast()
-        let retained = answers
-        let rng = random
+        rollback(to: completedComparisons - 1)
+    }
+    public mutating func rollback(to retainedCount: Int) {
+        guard retainedCount >= 0, retainedCount < completedComparisons else { return }
+        let legacyCount = legacyHistory?.answers.count ?? 0
+        if retainedCount < legacyCount, var legacy = legacyHistory {
+            legacy.rollback(to: retainedCount)
+            self = StereoPreferenceSearch(migrating: legacy)
+            return
+        }
+        let stereoCount = retainedCount - legacyCount
+        let removed = answers[stereoCount]
+        let retained = Array(answers.prefix(stereoCount))
+        let rng = removed.randomBeforeVote ?? random
         mean = priorMean; covariance = priorCovariance; answers = []
         for answer in retained {
             answers.append(answer); update(answer)
@@ -207,6 +219,7 @@ public struct StereoPreferenceSearch: Codable, Sendable {
         random = rng
         current = removed.comparison
     }
+
 }
 
 extension StereoPreferenceSearch {

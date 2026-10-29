@@ -165,9 +165,12 @@ public struct PreferenceSearch: Codable, Sendable {
         for i in order { update(answers[i], at:model) }
     }
     public mutating func undo() {
-        guard !answers.isEmpty else { return }
-        let removed = answers.removeLast()
-        let retained = answers
+        rollback(to: answers.count - 1)
+    }
+    public mutating func rollback(to retainedCount: Int) {
+        guard retainedCount >= 0, retainedCount < answers.count else { return }
+        let removed = answers[retainedCount]
+        let retained = Array(answers.prefix(retainedCount))
         let rng = random
         self = PreferenceSearch(initial: initial)
         for answer in retained {

@@ -8,6 +8,28 @@ public struct HeadphoneProfile: Codable, Identifiable, Sendable {
     public init(name: String) {
         id = UUID(); self.name = name; saved = StereoEQCurve()
     }
+    public var currentCurve: StereoEQCurve { session?.recommendation ?? saved }
+    @discardableResult
+    public mutating func prepareComparison() -> Bool {
+        var changed = false
+        if session == nil {
+            session = StereoPreferenceSearch(initial: saved, seed: UInt64.random(in: 1...UInt64.max))
+            changed = true
+        }
+        if session?.current == nil { _ = session?.next(); changed = true }
+        if saved != currentCurve { saved = currentCurve; changed = true }
+        return changed
+    }
+    public mutating func record(_ rating: PreferenceRating, at date: Date = Date()) {
+        guard session?.current != nil else { return }
+        session?.answer(rating, at: date)
+        saved = currentCurve
+        _ = session?.next()
+    }
+    public mutating func rollback(to retainedCount: Int) {
+        session?.rollback(to: retainedCount)
+        saved = currentCurve
+    }
     private enum CodingKeys: String, CodingKey { case id, name, saved, session }
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -28,7 +50,7 @@ public struct HeadphoneProfile: Codable, Identifiable, Sendable {
     private enum SessionKeys: String, CodingKey { case priorMean }
 }
 public struct ProfileLibrary: Codable, Sendable {
-    public var version = 2
+    public var version = 3
     public var profiles: [HeadphoneProfile] = []
     public var selected: UUID?
     public init() {}
@@ -39,7 +61,7 @@ public struct ProfileLibrary: Codable, Sendable {
         profiles.append(profile); selected = profile.id
     }
     public func validate() throws {
-        guard (1...2).contains(version), Set(profiles.map(\.id)).count == profiles.count,
+        guard (1...3).contains(version), Set(profiles.map(\.id)).count == profiles.count,
               selected == nil || index != nil else { throw ProfileFailure(message: "Unsupported or damaged profile file.") }
         for profile in profiles {
             guard profile.saved.valid, profile.session?.valid != false else {
@@ -59,7 +81,7 @@ public enum ProfileStorage {
         do {
             var result = try JSONDecoder().decode(ProfileLibrary.self, from: Data(contentsOf: url))
             try result.validate()
-            result.version = 2
+            result.version = 3
             return result
         } catch { throw ProfileFailure(message: "Could not load profiles: \(error.localizedDescription). The existing file has been preserved.") }
     }
@@ -70,9 +92,9 @@ public enum ProfileStorage {
             if FileManager.default.fileExists(atPath: url.path) {
                 let existing = try Data(contentsOf: url)
                 let previous = try JSONDecoder().decode(StoredVersion.self, from: existing)
-                guard (1...2).contains(previous.version) else { throw ProfileFailure(message: "Unsupported profile version on disk.") }
-                if previous.version == 1 {
-                    let backup = url.deletingLastPathComponent().appendingPathComponent("profiles-v1-\(UUID().uuidString).json")
+                guard (1...3).contains(previous.version) else { throw ProfileFailure(message: "Unsupported profile version on disk.") }
+                if previous.version < 3 {
+                    let backup = url.deletingLastPathComponent().appendingPathComponent("profiles-v\(previous.version)-\(UUID().uuidString).json")
                     try existing.write(to: backup, options: .withoutOverwriting)
                 }
             }

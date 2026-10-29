@@ -31,7 +31,7 @@ public final class GlobalHotKey {
     public init(keyCode: UInt32, modifiers: UInt32, action: @escaping () -> Void) throws(HotKeyFailure) {
         self.action = action
         guard try !Self.isSystemShortcut(keyCode: keyCode, modifiers: modifiers) else {
-            throw HotKeyFailure(message: "This shortcut is assigned in macOS Keyboard settings. The on-screen bass control still works.")
+            throw HotKeyFailure(message: "This shortcut is assigned in macOS Keyboard settings. The on-screen EQ control still works.")
         }
         var events = [
             EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
@@ -50,7 +50,7 @@ public final class GlobalHotKey {
         let status = RegisterEventHotKey(keyCode, modifiers, Self.identifier, GetEventDispatcherTarget(),
                                         OptionBits(kEventHotKeyExclusive), &hotKey)
         guard status == noErr else {
-            throw HotKeyFailure(message: "The global shortcut is unavailable (\(status)); another app may already use it. The on-screen bass control still works.")
+            throw HotKeyFailure(message: "The global shortcut is unavailable (\(status)); another app may already use it. The on-screen EQ control still works.")
         }
     }
 

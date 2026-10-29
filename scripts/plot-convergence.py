@@ -33,7 +33,7 @@ for ax, scenario, title in zip(axes, ["ordinary", "unreliable", "long"],
     ax.yaxis.set_minor_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
     ax.grid(alpha=.2)
 axes[0].legend(fontsize=8)
-fig.suptitle("LowShelf: learning a target EQ from noisy preferences", fontsize=15)
+fig.suptitle("FineTune: learning a target EQ from noisy preferences", fontsize=15)
 fig.tight_layout()
 fig.savefig(args.results / "convergence.png", dpi=180)
 plt.close(fig)
