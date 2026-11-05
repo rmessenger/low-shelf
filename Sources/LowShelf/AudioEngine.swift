@@ -1,3 +1,4 @@
+import AutomationSupport
 import BassDSP
 import CoreAudio
 import Foundation
@@ -7,7 +8,7 @@ struct AudioFailure: LocalizedError {
     var errorDescription: String? { message }
 }
 
-func checkAudio(_ status: OSStatus, _ operation: String) throws {
+func checkAudio(_ status: OSStatus, _ operation: String) throws(AudioFailure) {
     guard status == noErr else {
         throw AudioFailure(message: "\(operation) failed (Core Audio \(status)). Check System Settings → Privacy & Security → Screen & System Audio Recording.")
     }
@@ -18,6 +19,11 @@ struct OutputDevice {
     let uid: String
     let name: String
     let rate: Double
+    let isHeadphones: Bool
+
+    var route: OutputRoute {
+        OutputRoute(id: id, sampleRate: rate, isHeadphones: isHeadphones)
+    }
 }
 
 @available(macOS 14.2, *)
@@ -34,15 +40,16 @@ final class AudioEngine {
         AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
     }
 
-    static func scalar<T: BitwiseCopyable>(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector, initial: T) throws -> T {
-        var property = address(selector)
+    static func scalar<T: BitwiseCopyable>(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector, initial: T,
+                                        scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal) throws(AudioFailure) -> T {
+        var property = address(selector, scope: scope)
         var value = initial
         var size = UInt32(MemoryLayout<T>.size)
         try checkAudio(AudioObjectGetPropertyData(object, &property, 0, nil, &size, &value), "Read audio device")
         return value
     }
 
-    static func string(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) throws -> String {
+    static func string(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector) throws(AudioFailure) -> String {
         var property = address(selector)
         var value: Unmanaged<CFString>?
         var size = UInt32(MemoryLayout<CFString>.size)
@@ -51,24 +58,41 @@ final class AudioEngine {
         return value.takeRetainedValue() as String
     }
 
-    static func defaultOutput() throws -> OutputDevice {
+    static func defaultOutput() throws(AudioFailure) -> OutputDevice {
         let id = try scalar(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice,
                             initial: AudioObjectID(0))
         guard id != 0 else { throw AudioFailure(message: "No audio output is available.") }
         return try OutputDevice(id: id, uid: string(id, kAudioDevicePropertyDeviceUID),
                                 name: string(id, kAudioObjectPropertyName),
-                                rate: scalar(id, kAudioDevicePropertyNominalSampleRate, initial: Double(0)))
+                                rate: scalar(id, kAudioDevicePropertyNominalSampleRate, initial: Double(0)),
+                                isHeadphones: headphoneOutput(id))
     }
 
-    static func streams(_ device: AudioObjectID, scope: AudioObjectPropertyScope) throws -> [AudioObjectID] {
+    private static func headphoneOutput(_ device: AudioObjectID) throws(AudioFailure) -> Bool {
+        for stream in try streams(device, scope: kAudioObjectPropertyScopeOutput) {
+            var property = address(kAudioStreamPropertyTerminalType)
+            guard AudioObjectHasProperty(stream, &property) else { continue }
+            let terminal = try scalar(stream, kAudioStreamPropertyTerminalType, initial: UInt32(0))
+            guard HeadphoneAutomation.isHeadphoneTerminal(terminal) else { continue }
+            var jack = address(kAudioDevicePropertyJackIsConnected, scope: kAudioObjectPropertyScopeOutput)
+            guard AudioObjectHasProperty(device, &jack) else { return true }
+            let connected = try scalar(device, kAudioDevicePropertyJackIsConnected, initial: UInt32(0),
+                                       scope: kAudioObjectPropertyScopeOutput)
+            return connected != 0
+        }
+        return false
+    }
+
+    static func streams(_ device: AudioObjectID, scope: AudioObjectPropertyScope) throws(AudioFailure) -> [AudioObjectID] {
         var property = address(kAudioDevicePropertyStreams, scope: scope)
         var size: UInt32 = 0
         try checkAudio(AudioObjectGetPropertyDataSize(device, &property, 0, nil, &size), "Read audio streams")
         var result = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
         guard !result.isEmpty else { return [] }
-        try result.withUnsafeMutableBytes { bytes in
-            try checkAudio(AudioObjectGetPropertyData(device, &property, 0, nil, &size, bytes.baseAddress!), "Read audio streams")
+        let status = result.withUnsafeMutableBytes { bytes in
+            AudioObjectGetPropertyData(device, &property, 0, nil, &size, bytes.baseAddress!)
         }
+        try checkAudio(status, "Read audio streams")
         return result
     }
 

@@ -1,5 +1,6 @@
 import AppKit
 import BassDSP
+import ServiceManagement
 import SwiftUI
 
 @available(macOS 14.2, *)
@@ -21,6 +22,8 @@ struct LowShelfApp: App {
                 Button(model.running ? "Disable bass boost" : "Enable bass boost") {
                     model.toggle()
                 }.keyboardShortcut("e", modifiers: .command)
+                Divider()
+                AutomationSettingsMenu(model: model)
             }
         }
         MenuBarExtra {
@@ -46,12 +49,40 @@ struct LowShelfMenu: View {
                 model.toggle()
             }
             Divider()
+            AutomationSettingsMenu(model: model)
+            Divider()
             Button("Show LowShelf") {
                 openWindow(id: "main")
                 NSApp.activate(ignoringOtherApps: true)
             }
             Button("Quit LowShelf") { NSApp.terminate(nil) }.keyboardShortcut("q")
         }
+        .onAppear { model.refreshLoginItem() }
+    }
+}
+
+@available(macOS 14.2, *)
+struct AutomationSettingsMenu: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        Group {
+            Toggle("Launch at Login", isOn: Binding(
+                get: { model.launchAtLogin },
+                set: { model.setLaunchAtLogin($0) }
+            ))
+            if model.loginNeedsApproval {
+                Button("Approve Launch at Login…") {
+                    SMAppService.openSystemSettingsLoginItems()
+                }
+            }
+            if let error = model.loginError {
+                Text(error)
+            }
+            Toggle("Automatic Bass Boost for Headphones", isOn: $model.automaticHeadphones)
+                .help("Enable bass boost when headphones become the output; disable it when switching away.")
+        }
+        .onAppear { model.refreshLoginItem() }
     }
 }
 
@@ -148,10 +179,10 @@ struct ContentView: View {
                         .accessibilityLabel(model.shortcutError == nil
                             ? "Global shortcut: Control Option Command B" : "Global shortcut unavailable")
                 }
-                Text(model.error ?? model.shortcutError ?? model.warning ?? (model.running
+                Text(model.error ?? model.loginError ?? model.shortcutError ?? model.warning ?? (model.running
                     ? "Bass boost is enabled. Disabling restores normal playback and volume."
                     : "Bass boost is disabled. Enable it to apply your settings."))
-                    .font(.system(size: 11)).foregroundStyle((model.error != nil || model.shortcutError != nil) ? .orange : .secondary)
+                    .font(.system(size: 11)).foregroundStyle((model.error != nil || model.loginError != nil || model.shortcutError != nil) ? .orange : .secondary)
                     .lineLimit(3).frame(height: 42, alignment: .topLeading).textSelection(.enabled)
             }
         }
