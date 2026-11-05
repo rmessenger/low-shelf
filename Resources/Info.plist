@@ -1,16 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleExecutable</key><string>FineTune</string>
+<key>CFBundleExecutable</key><string>LowShelf</string>
 <key>CFBundleIdentifier</key><string>app.lowshelf.LowShelf</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
-<key>CFBundleName</key><string>FineTune</string>
-<key>CFBundleDisplayName</key><string>FineTune</string>
-<key>ProfileStorageDirectory</key><string>LowShelf</string>
+<key>CFBundleName</key><string>LowShelf</string>
+<key>CFBundleDisplayName</key><string>LowShelf</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.1.0</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>LSMinimumSystemVersion</key><string>14.2</string>
 <key>NSHighResolutionCapable</key><true/>
-<key>NSAudioCaptureUsageDescription</key><string>FineTune processes system audio locally to apply your headphone EQ. It never records or uploads audio.</string>
+<key>NSAudioCaptureUsageDescription</key><string>LowShelf processes system audio locally to apply your bass settings. It never records or uploads audio.</string>
 </dict></plist>
