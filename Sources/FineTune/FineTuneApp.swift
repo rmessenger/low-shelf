@@ -16,6 +16,10 @@ struct FineTuneApp: App {
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandMenu("Tuning") {
+                Button(model.useSlider ? "✓ Slider experiment" : "Slider experiment") { model.setSliderExperiment(true) }
+                Button(model.useSlider ? "Original A/B voting" : "✓ Original A/B voting") { model.setSliderExperiment(false) }
+            }
             CommandMenu("Audio") {
                 Button(model.running ? "Disable EQ" : "Enable EQ") {
                     model.toggle()

@@ -21,10 +21,16 @@ final class AppModel: ObservableObject {
     @Published private(set) var library = ProfileLibrary()
     @Published private(set) var profileError: String?
     @Published private(set) var listening = ComparisonListening()
+    @Published private(set) var useSlider = UserDefaults.standard.object(forKey: "useSliderExperiment") as? Bool ?? true
+    @Published private(set) var sliderPosition = 0.0
+    private var sliderPlan: SliderGainPlan?
+    private var sliderPlanComparison: SliderComparison?
+    private var sliderPlanRate = 0.0
     private var profilesReadOnly = false
     // Keep profile storage independent of the app’s display name.
-    private let profileURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent((Bundle.main.object(forInfoDictionaryKey: "ProfileStorageDirectory") as? String ?? "LowShelf") + "/profiles.json")
+    private let profileFolder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent((Bundle.main.object(forInfoDictionaryKey: "ProfileStorageDirectory") as? String ?? "LowShelf"))
+    private var profileURL: URL { profileFolder.appendingPathComponent(useSlider ? SliderProfileStorage.filename : "profiles.json") }
     private let engine = AudioEngine()
     private var timer: Timer?
     private var routeTicks = 0
@@ -33,7 +39,7 @@ final class AppModel: ObservableObject {
     private var clipTicks = 0
 
     init() {
-        do { library = try ProfileStorage.load(from: profileURL) }
+        do { library = try useSlider ? SliderProfileStorage.open(in: profileFolder) : ProfileStorage.load(from: profileURL) }
         catch { profileError = error.localizedDescription; profilesReadOnly = true }
         prepareSelectedProfile()
         refreshOutput()
@@ -143,9 +149,10 @@ final class AppModel: ObservableObject {
 extension AppModel {
     typealias Audition = ComparisonAudition
     var audition: Audition { listening.selection }
-    var canVote: Bool { !profilesReadOnly && running && listening.canVote && library.profile?.session?.current != nil }
+    var canVote: Bool { !useSlider && !profilesReadOnly && running && listening.canVote && library.profile?.session?.current != nil }
     var currentCurve: StereoEQCurve { library.profile?.currentCurve ?? StereoEQCurve() }
     var auditionCurve: StereoEQCurve {
+        if useSlider { return library.profile?.slider?.comparison.curve(at: sliderPosition) ?? currentCurve }
         switch audition {
         case .current: return currentCurve
         case .a: return library.profile?.session?.current?.a ?? currentCurve
@@ -154,6 +161,13 @@ extension AppModel {
     }
     var auditionGain: StereoGain {
         let rate = sampleRate > 0 ? sampleRate : 48000
+        if useSlider, let pair = library.profile?.slider?.comparison {
+            if sliderPlanComparison != pair || sliderPlanRate != rate {
+                sliderPlan = SliderGainPlan(comparison: pair, rate: rate)
+                sliderPlanComparison = pair; sliderPlanRate = rate
+            }
+            return sliderPlan!.gain(for: auditionCurve)
+        }
         guard let pair = library.profile?.session?.current else { return auditionCurve.playbackGain(rate: rate) }
         return auditionCurve.playbackGain(rate: rate, alongside: [currentCurve, pair.a, pair.b])
     }
@@ -172,7 +186,12 @@ extension AppModel {
     private func prepareSelectedProfile() {
         guard !profilesReadOnly, let index = library.index else { return }
         var updated = library
-        if updated.profiles[index].prepareComparison() { commit(updated) }
+        if useSlider {
+            if updated.profiles[index].slider == nil {
+                updated.profiles[index].prepareSlider(seed: UInt64.random(in: 1...UInt64.max))
+                commit(updated)
+            }
+        } else if updated.profiles[index].prepareComparison() { commit(updated) }
     }
     private func applyProfile() {
         guard library.profile != nil else {
@@ -182,13 +201,40 @@ extension AppModel {
         engine.apply(curve: auditionCurve, gain: auditionGain)
     }
     private func returnToCurrent() {
-        listening.reset()
+        listening.reset(); sliderPosition = 0
         applyProfile()
+    }
+    private func prepare(_ profile: inout HeadphoneProfile) {
+        if useSlider {
+            if profile.slider == nil { profile.prepareSlider(seed: UInt64.random(in: 1...UInt64.max)) }
+        } else { profile.prepareComparison() }
+    }
+    func setSliderPosition(_ position: Double) {
+        guard position.isFinite else { return }
+        sliderPosition = min(1, max(-1, position))
+        applyProfile()
+    }
+    var canAcceptSlider: Bool { useSlider && !profilesReadOnly && running && library.profile?.slider != nil }
+    func acceptSlider() {
+        guard canAcceptSlider, let index = library.index else { return }
+        var updated = library
+        updated.profiles[index].acceptSlider(sliderPosition)
+        if commit(updated) { returnToCurrent() }
+    }
+    func setSliderExperiment(_ enabled: Bool) {
+        guard enabled != useSlider else { return }
+        do {
+            let loaded = try enabled ? SliderProfileStorage.open(in: profileFolder) : ProfileStorage.load(from: profileFolder.appendingPathComponent("profiles.json"))
+            useSlider = enabled; library = loaded; profilesReadOnly = false; profileError = nil
+            UserDefaults.standard.set(enabled, forKey: "useSliderExperiment")
+            prepareSelectedProfile()
+            returnToCurrent()
+        } catch { profileError = error.localizedDescription }
     }
     func selectProfile(_ id: UUID?) {
         var updated = library
         updated.selected = id
-        if let index = updated.index { updated.profiles[index].prepareComparison() }
+        if let index = updated.index { prepare(&updated.profiles[index]) }
         if commit(updated) { returnToCurrent() }
     }
     func addProfile(_ name: String) {
@@ -196,7 +242,7 @@ extension AppModel {
         guard !cleaned.isEmpty else { return }
         var updated = library
         updated.add(name: cleaned)
-        if let index = updated.index { updated.profiles[index].prepareComparison() }
+        if let index = updated.index { prepare(&updated.profiles[index]) }
         if commit(updated) { returnToCurrent() }
     }
     func renameProfile(_ name: String) {
@@ -210,7 +256,7 @@ extension AppModel {
         guard let index = library.index else { return }
         var updated = library
         updated.profiles.remove(at: index); updated.selected = updated.profiles.first?.id
-        if let next = updated.index { updated.profiles[next].prepareComparison() }
+        if let next = updated.index { prepare(&updated.profiles[next]) }
         if commit(updated) { stop(); returnToCurrent() }
     }
     func listen(_ choice: Audition) {

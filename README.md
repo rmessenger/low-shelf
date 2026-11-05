@@ -13,7 +13,15 @@ Apple's Command Line Tools with Swift 6 are sufficient; full Xcode is optional. 
 
 Choose a headphone profile and press **Enable EQ**. If macOS asks, allow FineTune to capture system audio. This access is used only to process playback in memory; audio is never saved or uploaded. Permissions live in System Settings → Privacy & Security → Screen & System Audio Recording. An ad-hoc rebuild may require granting permission again.
 
-## Controls
+## Local slider experiment
+
+The current local build starts with the slider experiment. Drag between A and B, with Current at the center, then press **Use this sound**. The exact selected curve becomes Current, the slider recenters, and the next adjustment is ready. The graph always shows Current. Keeping the center advances to a different adjustment without changing the curve.
+
+Use **Tuning → Original A/B voting** to return to the original method, or **Tuning → Slider experiment** to resume the experiment. The methods have separate profile files. On first launch, both original profiles are copied from their latest learned curves and their complete voting history is backed up. Later changes in one method do not alter the other. Slider mode has no history or rollback UI.
+
+[Algorithm, convergence argument, noise limits, and validation results](docs/slider-experiment.md).
+
+## Original voting controls
 
 - **Headphones:** choose the profile for the pair you are wearing; the gear button adds, renames, or deletes profiles.
 - **A / Current / B:** listen to the current profile or either candidate. The graph always shows Current, keeping candidate shapes hidden.

@@ -11,6 +11,7 @@ let package = Package(
         .executableTarget(name: "TuningChecks", dependencies: ["TuningCore", "BassDSP"], path: "Tests/TuningChecks"),
         .executableTarget(name: "StereoTuningChecks", dependencies: ["TuningCore", "BassDSP"], path: "Tests/StereoTuningChecks"),
         .executableTarget(name: "HistoryChecks", dependencies: ["TuningCore"], path: "Tests/HistoryChecks"),
+        .executableTarget(name: "SliderChecks", dependencies: ["TuningCore"], path: "Tests/SliderChecks"),
         .target(name: "HotKeySupport", swiftSettings: [.swiftLanguageMode(.v5)]),
         .executableTarget(name: "HotKeyChecks", dependencies: ["HotKeySupport"], path: "Tests/HotKeyChecks", swiftSettings: [.swiftLanguageMode(.v5)]),
         .executableTarget(name: "FineTune", dependencies: ["BassDSP", "HotKeySupport", "TuningCore"], swiftSettings: [.swiftLanguageMode(.v5)]),

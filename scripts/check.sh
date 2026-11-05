@@ -7,4 +7,5 @@ swift run -c release -Xswiftc -warnings-as-errors HotKeyChecks
 swift run -c release -Xswiftc -warnings-as-errors TuningChecks
 swift run -c release -Xswiftc -warnings-as-errors HistoryChecks
 swift run -c release -Xswiftc -warnings-as-errors StereoTuningChecks
+swift run -c release -Xswiftc -warnings-as-errors SliderChecks
 swift build -c release --product FineTune -Xswiftc -warnings-as-errors

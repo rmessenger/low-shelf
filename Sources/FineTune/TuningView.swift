@@ -23,6 +23,9 @@ struct TuningView: View {
                 }
                 if let profile = model.library.profile {
                     ProfileCurve(curve: model.currentCurve, accent: accent).frame(height: 190)
+                    if model.useSlider {
+                        SliderTuningControls(model: model, accent: accent)
+                    } else {
                     HStack {
                         Text("Current curve").font(.headline)
                         Spacer()
@@ -48,6 +51,7 @@ struct TuningView: View {
                         }
                         Text(model.running ? (model.canVote ? "Each vote updates Current and saves automatically." : "Listen to both A and B to unlock voting.") : "Enable EQ to compare A and B.")
                             .font(.caption).foregroundStyle(.secondary)
+                    }
                     }
 
                 } else {

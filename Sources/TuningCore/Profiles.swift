@@ -5,10 +5,21 @@ public struct HeadphoneProfile: Codable, Identifiable, Sendable {
     public var name: String
     public var saved: StereoEQCurve
     public var session: StereoPreferenceSearch?
+    public var slider: SliderSearch?
     public init(name: String) {
         id = UUID(); self.name = name; saved = StereoEQCurve()
     }
-    public var currentCurve: StereoEQCurve { session?.recommendation ?? saved }
+    public var currentCurve: StereoEQCurve { slider?.curve ?? session?.recommendation ?? saved }
+    public mutating func prepareSlider(seed: UInt64) {
+        let initial = currentCurve
+        slider = SliderSearch(initial: initial, seed: seed)
+        saved = initial
+        session = nil
+    }
+    public mutating func acceptSlider(_ position: Double) {
+        slider?.accept(position)
+        saved = currentCurve
+    }
     @discardableResult
     public mutating func prepareComparison() -> Bool {
         var changed = false
@@ -30,12 +41,13 @@ public struct HeadphoneProfile: Codable, Identifiable, Sendable {
         session?.rollback(to: retainedCount)
         saved = currentCurve
     }
-    private enum CodingKeys: String, CodingKey { case id, name, saved, session }
+    private enum CodingKeys: String, CodingKey { case id, name, saved, session, slider }
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         saved = try container.decode(StereoEQCurve.self, forKey: .saved)
+        slider = try container.decodeIfPresent(SliderSearch.self, forKey: .slider)
         guard container.contains(.session), try !container.decodeNil(forKey: .session) else { session = nil; return }
         let sessionDecoder = try container.superDecoder(forKey: .session)
         let fields = try sessionDecoder.container(keyedBy: SessionKeys.self)
@@ -64,7 +76,7 @@ public struct ProfileLibrary: Codable, Sendable {
         guard (1...3).contains(version), Set(profiles.map(\.id)).count == profiles.count,
               selected == nil || index != nil else { throw ProfileFailure(message: "Unsupported or damaged profile file.") }
         for profile in profiles {
-            guard profile.saved.valid, profile.session?.valid != false else {
+            guard profile.saved.valid, profile.session?.valid != false, profile.slider?.valid != false else {
                 throw ProfileFailure(message: "Invalid EQ or tuning history in profile file.")
             }
         }
